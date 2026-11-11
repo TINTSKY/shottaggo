@@ -1,212 +1,99 @@
-# DSH AnnotateAnything
+# dsh-annotate-viewport
 
-A small, unofficial **DeepSeek Harness** plugin for pointing at interface elements,
-adding comments, and sending their screenshots into the current conversation.
-English and Russian UI are included. Licensed under MIT.
+给 DeepSeek Harness 的**整屏标注**插件：每个视口截一张完整截图，用带编号的红色框标出要评论的位置，最后把截图（红框已烘焙进 PNG）和评论一起插入当前会话的输入框草稿。
 
-## What it does
+这是 [DSH-AnnotateAnything](https://github.com/Meatware-Engineering/DSH-AnnotateAnything) 的 fork（MIT）。上游是"只截选中区域"，本 fork 改成"整屏底图 + 红框"，因为裁剪掉上下文后，模型很容易理解偏。
 
-- Adds an **Annotate** button beside the conversation input.
-- Highlights elements under the pointer. Click to annotate an element, or hold
-  the primary pointer button and drag to select a rectangle automatically.
-- Captures only the selected visible rectangle, with no annotation controls in the PNG.
-- Lets you add several comments, then edit or delete them via numbered pins.
-- Sends a numbered comment list and one cropped PNG per selection. Elements
-  include CSS selectors; arbitrary regions include viewport coordinates in CSS pixels.
-- Supports selecting page elements inside the Desktop Browser panel when its
-  Electron `webview` exposes `executeJavaScript` and `capturePage`.
+![Harness 界面标注示例](docs/example-host.png)
 
-This is a client-side plugin with an empty Host entry point, not a browser extension
-or a standalone screenshot utility. The pins are UI controls; the attached PNGs
-are crops, not full-page images with pins painted over them.
+![Browser 页面标注示例](docs/example-guest.png)
 
-## Install from GitHub
+上面两张图是 `test/harness` 在真实 Chromium 里跑出来的产物：整屏截图 + 红框 + 全局编号，编号与插入输入框的文字编号一致。
 
-npm publication is **not required**. For Desktop:
+## 和上游的区别
 
-1. Launch DeepSeek Harness Desktop once to initialize its profile.
-2. Use the `dsh` command installed by Desktop through **Manage dsh Command…**.
-   An npm-installed `dsh` cannot manage the Desktop profile. If needed, install
-   or repair the command, then open a new terminal.
-3. Let active tasks finish and fully quit Desktop before running the command below.
-   Closing its window is not enough.
+| | 上游 | 本插件 |
+|---|---|---|
+| 截图 | 每条标注裁一小块 | 每个视口状态一张完整截图 |
+| 标注 | 图里没有框，靠文字描述坐标 | 红框 + 编号直接画进 PNG |
+| 编号 | 按裁图顺序 | 全局编号，跨多张截图连续 |
+| 输出 | 直接 `sendSession` 发送 | 插入输入框草稿，可继续编辑、自己按发送 |
+| 语言 | 英/俄 | 中/英 |
 
-```sh
-dsh plugin --profile desktop add github:Meatware-Engineering/DSH-AnnotateAnything
-```
+## 行为
 
-Reopen Desktop, then open **Plugins** and enable AnnotateAnything if necessary.
-Follow Harness’s restart instructions if prompted.
+1. 点输入框左侧的**标注**按钮进入标注模式。
+2. 点击页面元素，或按住拖出一个区域；每处会生成一条标注。
+3. 在卡片里写评论，点**添加**。
+4. 滚动页面再标注时，会为新的视口状态再截一张图；每条标注归属于它被创建时的那张截图。
+5. 点**插入输入框**：每张截图生成一个 PNG 附件，评论按编号写成一段文字，追加到当前草稿；已有草稿文字保留。
 
-For a separately managed Web profile, use `--profile web` instead. Desktop and Web
-profiles have separate plugin installations.
+截图里的红框是最终 PNG 的一部分，不是 UI 控件；编号与文字里的编号一一对应。
 
-See the [official Desktop CLI instructions](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/desktop/README.md#bundled-command-runtime).
+## 安装（Desktop）
 
-The repository includes the generated `client.js`, so consumers do not need to
-build it. `private: true` prevents accidental npm publication; it does not make
-GitHub source private or prevent installation from GitHub.
-
-To work on a local checkout instead (the same Desktop command, first-launch,
-full-quit, and reopen requirements apply):
+前置：通过 **设置 → 账号 → Manage dsh Command…** 安装 Desktop 自带的 `dsh` 命令。npm 全局安装的 `dsh` 不能管理 Desktop profile。
 
 ```sh
-npm ci
-npm run check
-dsh plugin --profile desktop add "link:$(pwd)"
+# 1. 先完全退出 Desktop（关窗口不算）
+# 2. 把本目录作为链接安装进 desktop profile
+dsh plugin --profile desktop add "link:C:\Users\YuanBo\Documents\deepseek-harness\default-workspace\annotate-viewport"
+# 3. 重新打开 Desktop，到「插件」页确认 dsh-annotate-viewport 已启用
 ```
 
-Run the last command from this directory. Rebuild and reload Harness after editing.
-Do not install both a linked copy and a GitHub copy under competing package names.
-
-## Use
-
-1. Open the conversation you want to send screenshots to.
-2. Click **Annotate**. Click a highlighted element, or hold the primary button
-   and drag a visible rectangle in any direction. There is no mode switch.
-   In Desktop Browser, start the gesture inside the page.
-3. Wait for the region screenshot, enter a comment and click **Add**. Repeat for
-   other elements or regions; both kinds can be mixed in the same submission.
-4. Click a numbered pin to edit/delete its comment.
-5. Click **Send** to submit the annotations to the current conversation.
-
-**Esc** cancels a drag first, then dismisses the current editor, or leaves
-annotation mode if neither is open. Movement below 4 CSS pixels counts as an
-element click. At 4 CSS pixels of movement, the gesture becomes a region selection.
-A region smaller than 4 CSS pixels in either dimension is discarded; a cancelled
-or too-thin drag never falls back to selecting an element. Pointer cancellation, loss of capture, window blur, scroll
-or resize cancels an unfinished drag. **Close** clears pending annotations.
-Finish or discard annotations before
-switching conversations. Opening annotation mode again after a guest navigation
-reinstalls its page selection overlay. Saved region images do not change after
-scrolling: their stale outlines disappear, and numbered buttons in the toolbar
-keep their comments available for editing or deletion.
-
-## Requirements and limitations
-
-- Requires the Harness Web client, including `slots`, `locale`, `conversation`,
-  `sessions`, `conversation.input.left`, and `shell.overlay`.
-- Requires image-draft APIs `conversation.createDrafts` and `sendSession`.
-  Unsupported versions show an error instead of silently sending text only.
-- React is provided by Harness through its client module loader. `html-to-image`
-  is bundled; no separate capture service or API key is needed.
-- Desktop guest-page capture relies on Electron APIs. An ordinary browser cannot
-  use those APIs; cross-origin iframe contents are not generally accessible.
-- Host screenshots are DOM reconstructions, not OS screenshots. Video, protected
-  content, cross-origin resources, canvas and unusual CSS may not reproduce.
-  Protected or cross-origin canvas/video inside a selection cannot be read by
-  DOM capture and produces a specific error. Fonts are not embedded. Selected host regions above 2.5 million CSS pixels are
-  rejected; choose a smaller visible selection. Region PNGs are bounded to 1600
-  pixels on their longest edge. A region cannot span both Harness and a guest page;
-  select inside one surface at a time.
-- **Regions** are captured immediately after release, before the comment is saved.
-  A failed or invalidated region capture must be selected again; Send never silently
-  recaptures different page content. Scroll, resize or navigation during capture
-  cancels it. Dynamic content can still change while a screenshot is being rendered.
-- **Elements** retain capture on Add and retry on Send. Keep their content visible
-  until capture finishes. Guest captures reject a changed viewport or page instance;
-  remove and reselect an invalidated element.
-- Guest selections operate in the main document, not nested cross-origin frames.
-  Newly opened guest tabs require leaving and re-entering annotation mode.
-- If any screenshot fails, sending stops and the annotations stay available.
-  Errors distinguish size limits, protected pixels, unavailable assets, image
-  decoding, a changed viewport and unavailable guest APIs. A failed region draft
-  retains its comment; Cancel allows a fresh selection.
-- This is an early 0.1.0 plugin. No broad Harness version/OS compatibility matrix
-  or end-to-end Desktop certification is claimed.
-
-## Privacy
-
-There is no independent analytics backend. Pressing **Send** submits selected
-screenshots, comments and element labels/selectors through Harness to the chosen
-conversation and its configured model provider. They may contain private page
-content. Inspect selections and avoid passwords, tokens and other secrets.
-Host region capture reconstructs intersecting content and ancestor layout locally;
-unrelated subtrees become invisible layout placeholders, without reading their
-canvas pixels or embedding their images. Only the selected crop is submitted.
-DOM rendering may request images/styles needed by the selection and its ancestors.
-Guest-page metadata is untrusted page content, not instructions to the assistant.
-
-## Development and verification
-
-Node.js 22+ is recommended for development. The committed lockfile pins build
-packages. The runtime artifact is `client.js`, loaded via `window.__ModuleLoader__`.
+本地开发时，改完源码后：
 
 ```sh
-npm ci
-npm run check
-npm pack --dry-run
+npm ci          # 只需一次
+npm run build   # 产出 client.js
 ```
 
-The automated tests cover geometry validation, reversed/clipped drags, pointer
-cancellation, raster coordinate conversion, mixed prompt formatting, guest script
-parsing and package entry points. They are not a real Harness UI test.
+然后重启 Desktop（或等 HMR 重载，取决于 profile 的 HMR 设置）。
 
-Optional Chromium integration checks load the committed `client.js` through the
-Harness module-loader contract, then exercise its actual React overlay, host DOM
-crops (including scrolling and fixed content), guest scripts, scaled guest geometry,
-and ordered PNG attachments through a mocked conversation service. Install test
-tools outside this checkout, then run:
+> 安装第三方插件等于在 profile 里运行完整权限的客户端代码。装之前请自己读一遍 `src/`；不要在不信任的会话里截取包含密钥的页面。
+
+## 使用范围与限制
+
+- **Desktop 的 Browser 面板**：可用。插件会找到面板里的 Electron `<webview>`，把选择脚本注入 guest 页面，再用 `webview.capturePage()` 拿真实像素。要求该 webview 暴露 `executeJavaScript` 和 `capturePage`。
+- **Harness 自己的界面**（会话、工具卡片、设置页）：可用。整窗 DOM 快照 + html-to-image 重建；`canvas`、视频、跨域图片、特殊 CSS 可能失真。
+- **Web profile 里的 Browser 标签**：不可用。跨域 iframe 读不到 DOM 也拿不到像素；这是安全边界，不是插件缺陷。
+- 截图是**当前视口**，不是整篇文档。滚动后标注会生成第二张截图；超长页面建议按屏标注。
+- 一条标注不能同时跨 Harness 界面和 Browser 页面；请在各自表面内选择。
+- 页面滚动/跳转/缩放期间截图会失败并提示重选，避免把框画到错误内容上。
+- 每张图最长边压到 1600px；视口超过 900 万 CSS 像素直接拒绝。
+- 截图会连同页面内容发给模型，注意隐私。
+
+## 实现要点（DSH 0.2.2-rc.1 验证）
+
+- `conversation.input.left`：输入框左侧的触发按钮。
+- `shell.overlay`：全窗口标注层。
+- `ctx.conversation.createDrafts(sessionId, files, uploadImages)`：把 PNG 变成图片草稿。
+- `shell.addAttachments(ids)` + `shell.setDraft(text)`：附件与评论进入输入框。
+- Browser 面板：`webview.executeJavaScript()` 注入选择脚本；`webview.capturePage()` 取整屏；guest 通过 `console.log('__DSH_ANNOTATE__' + json)` 回传选择结果。
+
+这些是客户端内部 API，DSH 升级后可能变化；插件在 0.2.2-rc.1 上做了端到端验证。
+
+## 测试
 
 ```sh
-npm install --prefix /tmp/annotate-test-tools playwright react react-dom
-/tmp/annotate-test-tools/node_modules/.bin/playwright install chromium
-NODE_PATH=/tmp/annotate-test-tools/node_modules node test/browser.cjs
+npm run build
+npm test          # 单元测试：几何、选择器、提示词格式、guest 脚本
+# 可选：用本机 Edge 无头跑真实 DOM 冒烟
+npm install --prefix ../test-tools --no-save react@18.3.1 react-dom@18.3.1
+npm run test:harness
 ```
 
-`CHROMIUM_EXECUTABLE` can select an already installed Chromium. PNG evidence is
-written to a fresh OS temporary directory. The Chromium guest bridge simulates
-Electron APIs; it does not certify every Desktop version.
+`test:harness` 会启动无头 Edge，加载构建后的 `client.js`，用 mock 的 Harness ctx 跑通两条路径（Harness 界面 + 模拟 Browser guest），并解码生成的 PNG 检查红框像素。它需要本机安装 Edge；可用 `EDGE` 环境变量覆盖路径。
 
-The optional native test runs a separate Electron app with its own temporary
-profile and a local test page. It loads the same committed client and checks actual `webview.executeJavaScript` and
-`capturePage` at 100%, 150% and 200% zoom, including PNG edge pixels:
+## 目录
 
-```sh
-npm install --prefix /tmp/annotate-test-tools electron@44.7.0
-NODE_PATH=/tmp/annotate-test-tools/node_modules node test/electron.cjs
-```
+- `src/client.cjs`：Overlay、状态（bases/items）、插入输入框。
+- `src/capture.cjs`：整窗 DOM 快照、guest 整屏截图、红框合成。
+- `src/guest.cjs`：注入 Browser guest 的选择脚本。
+- `src/region.cjs`：指针选择几何（host 与 guest 共用）。
+- `src/lib.cjs`：元素描述、选择器、caption 文本。
+- `build.mjs`：esbuild 打包成 `window.__ModuleLoader__` 可加载的 `client.js`。
 
-It briefly opens a test window and closes it afterward. The user's Harness sessions
-are not connected to this test.
+## 许可与归属
 
-To check the real Harness runtime, create a disposable Web profile and start it
-in another terminal. Do not point this check at your working profile:
-
-```sh
-DSH_HOME=/tmp/annotate-runtime-check dsh plugin --profile web add "link:$(pwd)"
-DSH_HOME=/tmp/annotate-runtime-check dsh web --host 127.0.0.1 --port 0 --no-open
-```
-
-Set `HARNESS_TEST_URL` to the localhost URL printed by that disposable server,
-then run `NODE_PATH=/tmp/annotate-test-tools/node_modules node test/runtime.cjs`.
-The test proves a tainted canvas outside the selected area cannot break its PNG,
-and protected content inside the area reports the right error while preserving
-the comment. It never submits to a model. Stop the disposable server afterward.
-
-Before a release, verify in Harness:
-selection, Add/edit/delete, multiple screenshots, Send, failed capture, Esc/Close,
-reopening the overlay, guest navigation, and switching conversations. Do not use
-real secrets in screenshots or send to an unrelated conversation during testing.
-
-## Files
-
-- `src/client.cjs`: UI, capture and conversation integration.
-- `src/guest.cjs`: Browser-panel guest selection scripts.
-- `src/lib.cjs`: formatting/selector/data-URL helpers.
-- `src/region.cjs`: shared pointer selection and validated geometry.
-- `src/capture.cjs`: host snapshots and raster cropping for both surfaces.
-- `client.js`: committed build output.
-- `index.js`: empty Host plugin.
-- `cordis.patch.yml`: bundle registration.
-- `test/`: Node test runner checks.
-- `THIRD_PARTY_NOTICES.md`: bundled html-to-image MIT notice.
-
-## Harness references
-
-- [Architecture, profiles and Desktop](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)
-- [Plugin Manager and supported install sources](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/boot/plugin-manager/README.md)
-
-GitHub installs are suitable for an early plugin. An npm release is optional and
-helps later with discoverability and registry-based version updates in Plugin
-Manager. This repository does not publish to npm automatically.
+MIT。原始实现 © 2026 Meatware Engineering（DSH-AnnotateAnything）；本 fork 的修改 © 2026 annotate-viewport contributors。`client.js` 内含 html-to-image（MIT，见 `THIRD_PARTY_NOTICES.md`）。

@@ -1,4 +1,4 @@
-window.__ModuleLoader__.load({ id: "dsh-annotate-anything", factory: (require) => {
+window.__ModuleLoader__.load({ id: "dsh-annotate-viewport", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
 "use strict";
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -2217,10 +2217,12 @@ var require_region = __commonJS({
 var require_capture = __commonJS({
   "src/capture.cjs"(exports2, module2) {
     "use strict";
-    var { toPng, toSvg } = require_lib();
-    var { clipRect: clipRect2, pixelRect } = require_region();
-    var MAX_SHOT_AREA = 25e5;
+    var { toSvg } = require_lib();
+    var { clipRect: clipRect2 } = require_region();
+    var MAX_VIEWPORT_AREA = 9e6;
+    var MAX_EDGE = 1600;
     var UI2 = "[data-annot-ui]";
+    var BOX_COLOR = "#ff3b30";
     var CaptureError2 = class extends Error {
       constructor(code) {
         super(code);
@@ -2238,7 +2240,32 @@ var require_capture = __commonJS({
         guestUnavailable: "captureGuestUnavailable",
         guest: "captureGuestFailed"
       };
-      return "error." + (keys[error?.code] || (error?.name === "SecurityError" ? "captureProtected" : "captureFailed"));
+      return "error." + (keys[error && error.code] || (error && error.name === "SecurityError" ? "captureProtected" : "captureFailed"));
+    }
+    async function decodeImage(dataUrl) {
+      const image = new Image();
+      image.src = dataUrl;
+      try {
+        await image.decode();
+      } catch (_error) {
+        throw new CaptureError2("decode");
+      }
+      if (!image.naturalWidth || !image.naturalHeight) throw new CaptureError2("decode");
+      return image;
+    }
+    async function rasterize(dataUrl) {
+      const image = await decodeImage(dataUrl);
+      const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, width, height);
+      return { dataUrl: canvas.toDataURL("image/png"), width, height };
     }
     function boundedSnapshot(rect) {
       const included = /* @__PURE__ */ new Set([document.documentElement, document.body]);
@@ -2325,39 +2352,10 @@ var require_capture = __commonJS({
         }
       };
     }
-    async function cropDataUrl(data, rect, viewport) {
-      const image = new Image();
-      image.src = data;
-      try {
-        await image.decode();
-      } catch (_) {
-        throw new CaptureError2("decode");
-      }
-      const crop = pixelRect(rect, viewport, { width: image.naturalWidth, height: image.naturalHeight });
-      if (!crop) throw new CaptureError2("invalid");
-      const canvas = document.createElement("canvas");
-      const scale = Math.min(1, 1600 / Math.max(crop.width, crop.height));
-      canvas.width = Math.max(1, Math.round(crop.width * scale));
-      canvas.height = Math.max(1, Math.round(crop.height * scale));
-      canvas.getContext("2d").drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL("image/png");
-    }
-    async function captureDom2(el) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 2 || rect.height < 2) throw new CaptureError2("invalid");
-      if (rect.width * rect.height > MAX_SHOT_AREA) throw new CaptureError2("tooLarge");
-      const ratio = Math.min(2, Math.max(0.25, 1200 / Math.max(rect.width, rect.height)));
-      try {
-        return await toPng(el, { pixelRatio: ratio, skipFonts: true, cacheBust: false, filter: (node) => !node.matches?.(UI2) });
-      } catch (error) {
-        throw new CaptureError2(error?.name === "SecurityError" ? "protected" : "assets");
-      }
-    }
-    async function captureHostRegion2(rect) {
-      const viewport = { width: window.innerWidth, height: window.innerHeight };
-      const box = clipRect2(rect, viewport.width, viewport.height, 4);
+    async function hostSnapshot(viewport) {
+      const rect = { x: 0, y: 0, width: viewport.width, height: viewport.height };
+      const box = clipRect2(rect, viewport.width, viewport.height, 1);
       if (!box) throw new CaptureError2("invalid");
-      if (box.width * box.height > MAX_SHOT_AREA) throw new CaptureError2("tooLarge");
       const snapshot = boundedSnapshot(box);
       const marker = "data-annot-scroll-" + Math.random().toString(36).slice(2);
       const scrollers = [];
@@ -2384,7 +2382,7 @@ var require_capture = __commonJS({
           filter: snapshot.filter
         });
       } catch (error) {
-        throw new CaptureError2(error?.name === "SecurityError" ? "protected" : "assets");
+        throw new CaptureError2(error && error.name === "SecurityError" ? "protected" : "assets");
       } finally {
         snapshot.restore();
         scrollers.forEach(({ node }) => node.removeAttribute(marker));
@@ -2457,37 +2455,130 @@ var require_capture = __commonJS({
         for (const [key, value] of Object.entries(values)) node.style.setProperty(key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()), value, "important");
         svg.querySelector("foreignObject").firstElementChild.appendChild(node);
       }
-      data = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
-      return cropDataUrl(data, box, viewport);
+      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
     }
-    async function captureGuest2(wv, rect, expected) {
-      if (!wv || typeof wv.capturePage !== "function") throw new CaptureError2("guestUnavailable");
-      const prepare = `window.__dshAnnotate && window.__dshAnnotate.prepareCapture(${JSON.stringify(expected || null)})`;
+    async function captureHostViewport2() {
+      const viewport = { width: window.innerWidth, height: window.innerHeight, x: window.scrollX, y: window.scrollY };
+      if (!(viewport.width > 0 && viewport.height > 0)) throw new CaptureError2("invalid");
+      if (viewport.width * viewport.height > MAX_VIEWPORT_AREA) throw new CaptureError2("tooLarge");
+      const svg = await hostSnapshot(viewport);
+      const shot = await rasterize(svg);
+      return { dataUrl: shot.dataUrl, image: { width: shot.width, height: shot.height }, viewport };
+    }
+    async function captureGuestViewport2(wv) {
+      if (!wv || typeof wv.capturePage !== "function" || typeof wv.executeJavaScript !== "function") {
+        throw new CaptureError2("guestUnavailable");
+      }
+      let viewport;
       try {
-        const viewport = await wv.executeJavaScript(prepare);
-        if (!viewport) throw new CaptureError2("changed");
-        const dx = expected && Number.isFinite(expected.x) ? expected.x - viewport.x : 0;
-        const dy = expected && Number.isFinite(expected.y) ? expected.y - viewport.y : 0;
-        const moved = { x: rect.x + dx, y: rect.y + dy, width: rect.width, height: rect.height };
-        const box = clipRect2(moved, viewport.width, viewport.height, 2);
-        if (!box) throw new CaptureError2("changed");
-        if (box.width * box.height > MAX_SHOT_AREA) throw new CaptureError2("tooLarge");
+        viewport = await wv.executeJavaScript("window.__dshAnnotate && window.__dshAnnotate.prepareCapture()");
+      } catch (_error) {
+        throw new CaptureError2("guest");
+      }
+      if (!viewport || !["width", "height", "x", "y"].every((key) => Number.isFinite(viewport[key]))) {
+        throw new CaptureError2("changed");
+      }
+      if (viewport.width * viewport.height > MAX_VIEWPORT_AREA) throw new CaptureError2("tooLarge");
+      let shot;
+      try {
         const image = await wv.capturePage();
-        const shot = await cropDataUrl(image.toDataURL(), box, viewport);
-        const valid = await wv.executeJavaScript(`window.__dshAnnotate && window.__dshAnnotate.captureValid(${JSON.stringify(viewport)})`);
-        if (!valid) throw new CaptureError2("changed");
-        return shot;
+        shot = await rasterize(image.toDataURL());
       } catch (error) {
         if (error instanceof CaptureError2) throw error;
         throw new CaptureError2("guest");
       } finally {
         try {
           await wv.executeJavaScript("window.__dshAnnotate && window.__dshAnnotate.finishCapture()");
-        } catch (_) {
+        } catch (_error) {
         }
       }
+      let valid = false;
+      try {
+        valid = await wv.executeJavaScript(
+          "window.__dshAnnotate && window.__dshAnnotate.captureValid(" + JSON.stringify(viewport) + ")"
+        );
+      } catch (_error) {
+        valid = false;
+      }
+      if (!valid) throw new CaptureError2("changed");
+      return { dataUrl: shot.dataUrl, image: { width: shot.width, height: shot.height }, viewport };
     }
-    module2.exports = { CaptureError: CaptureError2, captureErrorKey: captureErrorKey2, cropDataUrl, captureDom: captureDom2, captureHostRegion: captureHostRegion2, captureGuest: captureGuest2 };
+    function roundedRect(context, x, y, width, height, radius) {
+      const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+      context.beginPath();
+      if (typeof context.roundRect === "function") {
+        context.roundRect(x, y, width, height, r);
+        return;
+      }
+      context.moveTo(x + r, y);
+      context.lineTo(x + width - r, y);
+      context.quadraticCurveTo(x + width, y, x + width, y + r);
+      context.lineTo(x + width, y + height - r);
+      context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+      context.lineTo(x + r, y + height);
+      context.quadraticCurveTo(x, y + height, x, y + height - r);
+      context.lineTo(x, y + r);
+      context.quadraticCurveTo(x, y, x + r, y);
+      context.closePath();
+    }
+    async function drawAnnotations2(base, items, color) {
+      const image = await decodeImage(base.dataUrl);
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (!context) throw new CaptureError2("decode");
+      context.drawImage(image, 0, 0);
+      const viewport = base.viewport || { width: canvas.width, height: canvas.height };
+      const sx = canvas.width / viewport.width;
+      const sy = canvas.height / viewport.height;
+      const stroke = Math.max(2, Math.round(2.5 * Math.max(sx, sy)));
+      const halo = Math.max(1, Math.round(stroke * 0.6));
+      const radius = Math.max(2, Math.round(4 * Math.max(sx, sy)));
+      const accent = color || BOX_COLOR;
+      const badgeRadius = Math.max(10, Math.round(11 * Math.max(sx, sy)));
+      for (const item of items) {
+        const box = clipRect2(item.rect, viewport.width, viewport.height, 2);
+        if (!box) continue;
+        const x = box.x * sx;
+        const y = box.y * sy;
+        const width = Math.max(1, box.width * sx);
+        const height = Math.max(1, box.height * sy);
+        roundedRect(context, x - halo, y - halo, width + halo * 2, height + halo * 2, radius + halo);
+        context.lineWidth = stroke + halo * 2;
+        context.strokeStyle = "rgba(255,255,255,0.92)";
+        context.stroke();
+        roundedRect(context, x, y, width, height, radius);
+        context.lineWidth = stroke;
+        context.strokeStyle = accent;
+        context.stroke();
+        const cx = Math.min(Math.max(badgeRadius, x), Math.max(badgeRadius, canvas.width - badgeRadius));
+        const cy = Math.min(Math.max(badgeRadius, y), Math.max(badgeRadius, canvas.height - badgeRadius));
+        context.beginPath();
+        context.arc(cx, cy, badgeRadius, 0, Math.PI * 2);
+        context.fillStyle = accent;
+        context.fill();
+        context.lineWidth = Math.max(1, Math.round(badgeRadius * 0.18));
+        context.strokeStyle = "rgba(255,255,255,0.95)";
+        context.stroke();
+        context.fillStyle = "#ffffff";
+        context.font = "600 " + Math.round(badgeRadius * 1.05) + 'px "Segoe UI", system-ui, -apple-system, sans-serif';
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText(String(item.index), cx, cy + Math.round(badgeRadius * 0.05));
+      }
+      return canvas.toDataURL("image/png");
+    }
+    module2.exports = {
+      CaptureError: CaptureError2,
+      captureErrorKey: captureErrorKey2,
+      rasterize,
+      captureHostViewport: captureHostViewport2,
+      captureGuestViewport: captureGuestViewport2,
+      drawAnnotations: drawAnnotations2,
+      BOX_COLOR,
+      MAX_EDGE
+    };
   }
 });
 
@@ -2573,13 +2664,34 @@ var require_lib2 = __commonJS({
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       return { mediaType: meta.slice(5).split(";")[0] || "image/png", bytes };
     }
-    function formatAnnotations2(items, t) {
-      const lines = [t("prompt.head", { count: items.length })];
-      items.forEach((item, index) => {
-        const label = item.desc && item.desc.label ? item.desc.label : item.desc && item.desc.tag || "";
-        lines.push(t("prompt.item", { index: index + 1, label, comment: String(item.comment || "").trim() || "\u2014" }));
-        if (item.kind === "region" && item.desc && item.desc.rect) lines.push(t("prompt.region", { surface: item.desc.surface, ...item.desc.rect }));
-        if (item.desc && item.desc.selector) lines.push(t("prompt.where", { selector: item.desc.selector, tag: item.desc.tag }));
+    function formatInsertText2(groups, t) {
+      const lines = [t("insert.head")];
+      groups.forEach((group) => {
+        const viewport = group.viewport || {};
+        const scroll = group.scroll || { x: 0, y: 0 };
+        lines.push(t("insert.shot", {
+          url: group.url || "",
+          width: Math.round(viewport.width || 0),
+          height: Math.round(viewport.height || 0),
+          x: Math.round(scroll.x || 0),
+          y: Math.round(scroll.y || 0)
+        }));
+        group.items.forEach((item) => {
+          const label = item.desc && (item.desc.label || item.desc.tag) || t("insert.regionLabel");
+          lines.push(t("insert.item", {
+            index: item.index,
+            label: clip2(label, 80),
+            comment: clip2(String(item.comment || "").trim(), 300) || t("insert.noComment")
+          }));
+          if (item.desc && item.desc.selector) lines.push(t("insert.where", { selector: clip2(item.desc.selector, 240) }));
+          const rect = item.rect || {};
+          lines.push(t("insert.rect", {
+            x: Math.round(rect.x || 0),
+            y: Math.round(rect.y || 0),
+            width: Math.round(rect.width || 0),
+            height: Math.round(rect.height || 0)
+          }));
+        });
       });
       return lines.join("\n");
     }
@@ -2591,7 +2703,7 @@ var require_lib2 = __commonJS({
       rectOf,
       describeElement: describeElement2,
       dataUrlToBytes: dataUrlToBytes2,
-      formatAnnotations: formatAnnotations2
+      formatInsertText: formatInsertText2
     };
   }
 });
@@ -2613,6 +2725,7 @@ var require_guest = __commonJS({
   function emit(payload) { console.log(MARK + JSON.stringify(payload)); }
   function hide() { box.style.display = 'none'; label.style.display = 'none'; }
   if (window.__dshAnnotate) { try { window.__dshAnnotate.destroy(); } catch (error) {} }
+  var BOX = '__BOX__';
   var HIT = 'position:fixed;pointer-events:none;border:2px solid __ACCENT__;background:color-mix(in srgb,__ACCENT__ 16%,transparent);border-radius:3px;z-index:2147483647;display:none;box-sizing:border-box';
   var LABEL = 'position:fixed;pointer-events:none;background:__ACCENT__;color:__ON_ACCENT__;font:11px/1.5 -apple-system,system-ui,sans-serif;padding:1px 6px;border-radius:3px;z-index:2147483647;display:none;white-space:nowrap;max-width:60vw;overflow:hidden;text-overflow:ellipsis';
   var layer = document.createElement('div');
@@ -2732,11 +2845,11 @@ var require_guest = __commonJS({
     markers();
     if (markerNodes.has(id)) return;
     var outline = document.createElement('div');
-    outline.style.cssText = 'position:fixed;pointer-events:none;border:2px dashed __ACCENT__;border-radius:3px;box-sizing:border-box;opacity:.85;display:none';
+    outline.style.cssText = 'position:fixed;pointer-events:none;border:2px solid ' + BOX + ';border-radius:3px;box-sizing:border-box;opacity:.95;display:none';
     var pin = document.createElement('button');
     pin.type = 'button';
     pin.textContent = String(index);
-    pin.style.cssText = 'position:fixed;pointer-events:auto;width:22px;height:22px;padding:0;border:0;border-radius:11px;background:__ACCENT__;color:__ON_ACCENT__;font:600 12px/1 system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.28);display:none';
+    pin.style.cssText = 'position:fixed;pointer-events:auto;width:22px;height:22px;padding:0;border:0;border-radius:11px;background:' + BOX + ';color:#fff;font:600 12px/1 system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.28);display:none';
     pin.addEventListener('click', function (event) { event.preventDefault(); event.stopImmediatePropagation(); emit({ kind: 'pin', id: id }); }, true);
     markers().appendChild(outline);
     markers().appendChild(pin);
@@ -2828,7 +2941,7 @@ var require_guest = __commonJS({
     if (scrollFrame) return;
     scrollFrame = requestAnimationFrame(function () {
       scrollFrame = 0;
-      try { console.log(MARK + JSON.stringify({ kind: 'scroll', x: window.scrollX, y: window.scrollY, revision: revision })); } catch (error) {}
+      try { console.log(MARK + JSON.stringify({ kind: 'scroll', width: innerWidth, height: innerHeight, x: window.scrollX, y: window.scrollY, revision: revision })); } catch (error) {}
       reportMoves();
     });
   }
@@ -2970,7 +3083,7 @@ var require_guest = __commonJS({
       window.__dshAnnotate = null;
     }
   };
-  emit({ kind: 'ready', x: scrollX, y: scrollY, revision: revision });
+  emit({ kind: 'ready', width: innerWidth, height: innerHeight, x: scrollX, y: scrollY, revision: revision });
   return true;
 })()`;
     var GUEST_FREEZE2 = `(function () {
@@ -2992,38 +3105,47 @@ var require_guest = __commonJS({
 
 // src/client.cjs
 var React = require("react");
-var { CaptureError, captureErrorKey, captureDom, captureHostRegion, captureGuest } = require_capture();
+var {
+  CaptureError,
+  captureErrorKey,
+  captureHostViewport,
+  captureGuestViewport,
+  drawAnnotations
+} = require_capture();
 var { clipRect, installRegionPicker } = require_region();
-var { describeElement, dataUrlToBytes, formatAnnotations, clip } = require_lib2();
+var { describeElement, dataUrlToBytes, formatInsertText, clip } = require_lib2();
 var { MARK, GUEST_INSTALL, GUEST_REMOVE, GUEST_FREEZE, GUEST_RESUME } = require_guest();
-var NS = "annotateAnything";
+var NS = "annotateViewport";
 var UI = "[data-annot-ui]";
+var BOX = "#ff3b30";
 var CSS2 = `
 .dsh-annot-trigger{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none}
-.dsh-annot-trigger__badge{position:absolute;top:-2px;right:-3px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary));color:var(--dsw-alias-label-primary-foreground,#fff);font:600 9px/13px system-ui,sans-serif;text-align:center}
+.dsh-annot-trigger__badge{position:absolute;top:-2px;right:-3px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:${BOX};color:#fff;font:600 9px/13px system-ui,sans-serif;text-align:center}
 .dsh-annot-trigger:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
-.dsh-annot-trigger--active{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 18%,transparent);color:var(--dsw-alias-brand-primary)}
+.dsh-annot-trigger--active{background:color-mix(in srgb,${BOX} 16%,transparent);color:${BOX}}
 .dsh-annot-layer{position:fixed;inset:0;z-index:9000;pointer-events:none}
-.dsh-annot-bar{position:fixed;bottom:14px;top:auto;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:6px 8px 6px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.4 system-ui,-apple-system,sans-serif;pointer-events:auto;max-width:min(760px,92vw)}
-.dsh-annot-bar__hint{color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dsh-annot-bar__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary));color:var(--dsw-alias-label-primary-foreground,#fff);font-weight:600}
+.dsh-annot-bar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.4 system-ui,-apple-system,sans-serif;pointer-events:auto;max-width:min(820px,94vw)}
+.dsh-annot-bar__hint{color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+.dsh-annot-bar__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${BOX};color:#fff;font-weight:600}
+.dsh-annot-chip{appearance:none;min-width:22px;height:22px;padding:0 6px;border:1px solid ${BOX};background:color-mix(in srgb,${BOX} 12%,transparent);color:${BOX};border-radius:11px;font:600 11px/1 system-ui,sans-serif;cursor:pointer}
+.dsh-annot-chip:hover{background:color-mix(in srgb,${BOX} 22%,transparent)}
 .dsh-annot-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:7px;padding:4px 10px;font:12px/1.3 inherit;cursor:pointer;white-space:nowrap}
 .dsh-annot-btn:hover:enabled{background:var(--dsw-alias-bg-layer-2)}
 .dsh-annot-btn:disabled{opacity:.5;cursor:default}
-.dsh-annot-btn--primary{border-color:transparent;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary));color:var(--dsw-alias-label-primary-foreground,#fff)}
+.dsh-annot-btn--primary{border-color:transparent;background:${BOX};color:#fff}
 .dsh-annot-btn--primary:hover:enabled{filter:brightness(1.06)}
 .dsh-annot-btn--danger{color:var(--dsw-alias-state-error-primary)}
 .dsh-annot-hover{position:fixed;pointer-events:none;border:2px solid var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,transparent);border-radius:3px;box-sizing:border-box}
 .dsh-annot-hover__tag{position:fixed;pointer-events:none;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 6px;border-radius:4px;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary));color:var(--dsw-alias-label-primary-foreground,#fff);font:11px/1.5 system-ui,-apple-system,sans-serif}
-.dsh-annot-outline{position:fixed;pointer-events:none;border:2px dashed var(--dsw-alias-brand-primary);border-radius:3px;opacity:.85;box-sizing:border-box}
-.dsh-annot-pin{position:fixed;pointer-events:auto;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:11px;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary));color:var(--dsw-alias-label-primary-foreground,#fff);font:600 12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.28)}
-.dsh-annot-card{position:fixed;width:300px;pointer-events:auto;padding:10px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 10px 30px rgba(0,0,0,.22);font:12px/1.45 system-ui,-apple-system,sans-serif}
+.dsh-annot-outline{position:fixed;pointer-events:none;border:2px solid ${BOX};border-radius:3px;box-sizing:border-box;box-shadow:0 0 0 1px rgba(255,255,255,.85)}
+.dsh-annot-pin{position:fixed;pointer-events:auto;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:11px;background:${BOX};color:#fff;font:600 12px/1 system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.28)}
+.dsh-annot-card{position:fixed;width:320px;pointer-events:auto;padding:10px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 10px 30px rgba(0,0,0,.22);font:12px/1.45 system-ui,-apple-system,sans-serif}
 .dsh-annot-card__title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-annot-card__input{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;padding:6px 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit}
-.dsh-annot-card__input:focus{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:0}
+.dsh-annot-card__input:focus{outline:2px solid ${BOX};outline-offset:0}
 .dsh-annot-card__where{color:var(--dsw-alias-label-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-annot-card__rows{display:flex;gap:6px;justify-content:flex-end}
-.dsh-annot-error{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);pointer-events:none;max-width:80vw;padding:6px 12px;border-radius:8px;background:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary-foreground,#fff);font:12px/1.4 system-ui,-apple-system,sans-serif}
+.dsh-annot-error{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);pointer-events:none;max-width:80vw;padding:6px 12px;border-radius:8px;background:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary-foreground,#fff);font:12px/1.4 system-ui,-apple-system,sans-serif;z-index:9001}
 `;
 var ICON = React.createElement(
   "svg",
@@ -3035,7 +3157,7 @@ var ICON = React.createElement(
     strokeWidth: 1.2,
     strokeLinejoin: "round"
   }),
-  React.createElement("circle", { cx: 8, cy: 6.5, r: 1.6, fill: "currentColor" })
+  React.createElement("rect", { x: 3.5, y: 4.5, width: 9, height: 6, rx: 1, fill: "none", stroke: "currentColor", strokeWidth: 1, strokeDasharray: "2 1.4" })
 );
 function createStore() {
   let state = { active: false, sessionId: void 0, count: 0 };
@@ -3083,34 +3205,55 @@ function Trigger({ props, store, t }) {
 }
 function Overlay({ ctx, store, t }) {
   const state = React.useSyncExternalStore(store.subscribe, store.get, store.get);
-  const [hover, setHover] = React.useState(null);
   const [items, setItems] = React.useState([]);
   const [draft, setDraftState] = React.useState(null);
+  const [hover, setHover] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [, setTick] = React.useState(0);
-  const draftRef = React.useRef(null);
   const itemsRef = React.useRef(items);
-  const scrollRef = React.useRef(/* @__PURE__ */ new Map());
+  const draftRef = React.useRef(null);
+  const basesRef = React.useRef(/* @__PURE__ */ new Map());
+  const guestStatesRef = React.useRef(/* @__PURE__ */ new Map());
   const guestsRef = React.useRef([]);
-  const busyRef = React.useRef(busy);
+  const captureChainsRef = React.useRef(/* @__PURE__ */ new Map());
+  const pickerRef = React.useRef(null);
+  const seqRef = React.useRef(0);
+  const sessionRef = React.useRef(void 0);
+  const busyRef = React.useRef(false);
+  itemsRef.current = items;
+  draftRef.current = draft;
   busyRef.current = busy;
-  const regionPickerRef = React.useRef(null);
   const setDraft = (value) => {
     draftRef.current = value;
     setDraftState(value);
   };
-  draftRef.current = draft;
-  itemsRef.current = items;
-  React.useEffect(() => {
-    store.set({ count: items.length });
-  }, [items.length]);
-  React.useEffect(() => {
-    if (!error) return void 0;
-    const timer = setTimeout(() => setError(""), 8e3);
-    return () => clearTimeout(timer);
-  }, [error]);
-  const isActive = state.active;
+  const bump = () => setTick((value) => value + 1);
+  const boxKey = (surface, st) => {
+    if (!st) return "";
+    return [
+      surface,
+      st.instance || "",
+      Math.round(st.x || 0),
+      Math.round(st.y || 0),
+      Math.round(st.width || 0),
+      Math.round(st.height || 0)
+    ].join("|");
+  };
+  const hostState = () => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    x: window.scrollX,
+    y: window.scrollY,
+    instance: "harness"
+  });
+  const guestState = (wv) => guestStatesRef.current.get(wv) || null;
+  const currentKey = (surface, wv) => boxKey(surface, surface === "browser" ? guestState(wv) : hostState());
+  const itemVisible = (item) => {
+    if (!item || !item.key) return false;
+    return item.key === currentKey(item.surface, item.wv);
+  };
+  const isUiTarget = (target) => target instanceof Element && !!target.closest(UI);
   const pickAt = (x, y) => {
     const list = document.elementsFromPoint(x, y);
     for (const el of list) {
@@ -3119,237 +3262,288 @@ function Overlay({ ctx, store, t }) {
     }
     return null;
   };
-  const guestScroll = (wv) => scrollRef.current.get(wv) || { x: 0, y: 0 };
-  const guestViewportRect = (wv, docRect, viewport) => {
-    const outer = wv.getBoundingClientRect();
-    const scroll = guestScroll(wv);
-    const sx = viewport ? outer.width / viewport.width : 1;
-    const sy = viewport ? outer.height / viewport.height : 1;
-    return {
-      x: outer.left + (docRect.x - scroll.x) * sx,
-      y: outer.top + (docRect.y - scroll.y) * sy,
-      width: docRect.width * sx,
-      height: docRect.height * sy
+  const ensureBase = (surface, wv, st) => {
+    const key = boxKey(surface, st);
+    const existing = basesRef.current.get(key);
+    if (existing && existing.status !== "error") return existing;
+    if (existing) basesRef.current.delete(key);
+    const base = {
+      key,
+      surface,
+      wv: wv || null,
+      state: Object.assign({}, st),
+      viewport: { width: st.width, height: st.height },
+      dataUrl: null,
+      image: null,
+      url: surface === "browser" ? safeGuestUrl(wv) : location.href,
+      status: "capturing",
+      errorKey: null,
+      ready: null
     };
-  };
-  const guestLiveRect = (wv, rect, viewport) => {
-    const outer = wv.getBoundingClientRect();
-    const sx = viewport && viewport.width > 0 ? outer.width / viewport.width : 1;
-    const sy = viewport && viewport.height > 0 ? outer.height / viewport.height : 1;
-    return { x: outer.left + rect.x * sx, y: outer.top + rect.y * sy, width: rect.width * sx, height: rect.height * sy };
-  };
-  const scrollChainOf = (el) => {
-    const chain = [];
-    const root = document.scrollingElement || document.documentElement;
-    for (let node = el; node; node = node.parentElement) {
-      if (node.scrollHeight > node.clientHeight + 1 || node.scrollWidth > node.clientWidth + 1) {
-        chain.push({ el: node, top: node.scrollTop, left: node.scrollLeft });
-      }
-    }
-    if (!chain.some((entry) => entry.el === root)) chain.push({ el: root, top: root.scrollTop, left: root.scrollLeft });
-    return chain;
-  };
-  const regionRectOf = (value) => {
-    if (!value || value.kind !== "region" || !value.rect) return null;
-    const chain = value.scrollChain;
-    if (chain) {
-      let dx = 0;
-      let dy = 0;
-      let intact = true;
-      for (const entry of chain) {
-        if (!entry.el.isConnected) {
-          intact = false;
-          break;
-        }
-        dx -= entry.el.scrollLeft - entry.left;
-        dy -= entry.el.scrollTop - entry.top;
-      }
-      if (intact) return { x: value.rect.x + dx, y: value.rect.y + dy, width: value.rect.width, height: value.rect.height };
-    }
-    const anchor = value.anchorEl;
-    const offset = value.anchorOffset;
-    if (anchor && anchor.isConnected && offset) {
-      const bounds = anchor.getBoundingClientRect();
-      return { x: bounds.left + offset.dx, y: bounds.top + offset.dy, width: value.rect.width, height: value.rect.height };
-    }
-    return value.rect;
-  };
-  const itemRect = (item) => {
-    if (item.kind === "region" && !item.wv) return regionRectOf(item);
-    if (item.wv && item.liveRect) return guestLiveRect(item.wv, item.liveRect, item.guestViewport);
-    if (item.wv && item.docRect) return guestViewportRect(item.wv, item.docRect, item.guestViewport);
-    if (item.wv && item.guestRect) {
-      const outer = item.wv.getBoundingClientRect();
-      return { x: outer.left + item.guestRect.x, y: outer.top + item.guestRect.y, width: item.guestRect.width, height: item.guestRect.height };
-    }
-    if (item.el && item.el.isConnected) {
-      const rect = item.el.getBoundingClientRect();
-      return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
-    }
-    return item.rect || null;
-  };
-  const draftRectOf = (value) => {
-    if (!value) return null;
-    if (value.kind === "region" && !value.wv) return regionRectOf(value);
-    if (value.wv && value.liveRect) return guestLiveRect(value.wv, value.liveRect, value.guestViewport);
-    if (value.wv && value.docRect) return guestViewportRect(value.wv, value.docRect, value.guestViewport);
-    if (value.el && value.el.isConnected) {
-      const rect = value.el.getBoundingClientRect();
-      return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
-    }
-    return value.rect || null;
-  };
-  const applyGuestGeometry = (wv, list) => {
-    const byId = new Map(list.map((entry) => [entry.id, entry.rect]));
-    setItems((prev) => {
-      let changed = false;
-      const next = prev.map((entry) => {
-        if (entry.wv !== wv || !entry.guestId) return entry;
-        const rect = byId.get(entry.guestId);
-        const current = entry.liveRect;
-        if (!rect || current && current.x === rect.x && current.y === rect.y && current.width === rect.width && current.height === rect.height) return entry;
-        changed = true;
-        return Object.assign({}, entry, { liveRect: rect });
+    basesRef.current.set(key, base);
+    const chainKey = wv || "harness";
+    const previous = captureChainsRef.current.get(chainKey) || Promise.resolve();
+    const run = previous.catch(() => {
+    }).then(async () => {
+      const shot = surface === "browser" ? await captureGuestViewport(wv) : await captureHostViewport();
+      const now = shot.viewport || {};
+      const moved = Math.abs((now.x || 0) - (base.state.x || 0)) > 1 || Math.abs((now.y || 0) - (base.state.y || 0)) > 1 || Math.round(now.width) !== Math.round(base.state.width) || Math.round(now.height) !== Math.round(base.state.height) || now.instance && base.state.instance && now.instance !== base.state.instance;
+      if (moved) throw new CaptureError("changed");
+      return shot;
+    });
+    captureChainsRef.current.set(chainKey, run.catch(() => {
+    }));
+    base.ready = run.then((shot) => {
+      base.dataUrl = shot.dataUrl;
+      base.image = shot.image;
+      base.viewport = { width: shot.viewport.width, height: shot.viewport.height };
+      base.state = Object.assign({}, base.state, {
+        x: shot.viewport.x,
+        y: shot.viewport.y,
+        width: shot.viewport.width,
+        height: shot.viewport.height
       });
-      return changed ? next : prev;
+      base.status = "ready";
+      bump();
+    }).catch((failure) => {
+      base.status = "error";
+      base.errorKey = captureErrorKey(failure);
+      bump();
     });
-    const draft2 = draftRef.current;
-    if (draft2 && draft2.wv === wv && draft2.guestId) {
-      const rect = byId.get(draft2.guestId);
-      if (rect && (!draft2.liveRect || draft2.liveRect.x !== rect.x || draft2.liveRect.y !== rect.y || draft2.liveRect.width !== rect.width || draft2.liveRect.height !== rect.height)) {
-        setDraft(Object.assign({}, draft2, { liveRect: rect }));
-      }
+    return base;
+  };
+  const addItem = (surface, wv, st, rect, desc, guestId) => {
+    const base = ensureBase(surface, wv, st);
+    const item = {
+      id: "a" + Math.random().toString(36).slice(2),
+      index: ++seqRef.current,
+      key: base.key,
+      surface,
+      wv: wv || null,
+      guestId: guestId || null,
+      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      desc: desc || {},
+      comment: ""
+    };
+    setItems((prev) => prev.concat([item]));
+    return item;
+  };
+  const openDraft = (item) => {
+    setError("");
+    setDraft({ itemId: item.id, comment: item.comment || "", editing: true });
+  };
+  const clearAll = (resetSeq) => {
+    setItems([]);
+    itemsRef.current = [];
+    basesRef.current.clear();
+    if (resetSeq) seqRef.current = 0;
+    setDraft(null);
+    setHover(null);
+    store.set({ count: 0 });
+  };
+  const removeItem = (id) => {
+    setItems((prev) => prev.filter((entry) => entry.id !== id));
+    setDraft(null);
+  };
+  React.useEffect(() => {
+    store.set({ count: items.length });
+  }, [items.length]);
+  React.useEffect(() => {
+    if (!error) return void 0;
+    const timer = setTimeout(() => setError(""), 9e3);
+    return () => clearTimeout(timer);
+  }, [error]);
+  const isActive = state.active;
+  React.useEffect(() => {
+    if (sessionRef.current === void 0) {
+      sessionRef.current = state.sessionId;
+      return;
     }
-  };
-  const adoptList = (wv) => {
-    const list = [];
-    itemsRef.current.forEach((item, index) => {
-      if (item.wv === wv && item.guestId) list.push({ id: item.guestId, index: index + 1 });
-    });
-    const draft2 = draftRef.current;
-    if (draft2 && draft2.wv === wv && draft2.guestId && !list.some((entry) => entry.id === draft2.guestId)) {
-      list.push({ id: draft2.guestId, index: list.length + 1 });
+    if (state.sessionId !== sessionRef.current) {
+      sessionRef.current = state.sessionId;
+      clearAll(true);
     }
-    return list;
-  };
-  const forgetGuestDraft = (current) => {
-    if (!current || !current.guestId) return;
-    signalGuests("window.__dshAnnotate && window.__dshAnnotate.forget && window.__dshAnnotate.forget(" + JSON.stringify(current.guestId) + ")");
-  };
-  const signalGuests = (code) => {
-    for (const pair of guestsRef.current) {
+  }, [state.sessionId]);
+  React.useEffect(() => {
+    if (!isActive) {
+      setDraft(null);
+      setHover(null);
+    }
+  }, [isActive]);
+  React.useEffect(() => {
+    if (!isActive) return void 0;
+    const guests = [];
+    const watched = /* @__PURE__ */ new WeakSet();
+    let disposed = false;
+    const guestList = (wv) => {
+      const st = guestStatesRef.current.get(wv);
+      if (!st) return [];
+      const key = boxKey("browser", st);
+      return itemsRef.current.filter((item) => item.surface === "browser" && item.wv === wv && item.key === key && item.guestId).map((item) => ({ id: item.guestId, index: item.index }));
+    };
+    const adoptInto = (wv) => {
       try {
-        const pending = pair[0].executeJavaScript(code);
+        const pending = wv.executeJavaScript(
+          "window.__dshAnnotate && window.__dshAnnotate.adopt ? (window.__dshAnnotate.adopt(" + JSON.stringify(guestList(wv)) + "), true) : false"
+        );
         if (pending && typeof pending.catch === "function") pending.catch(() => {
         });
       } catch (_error) {
       }
-    }
-  };
-  const capture = async (item) => {
-    let shot = null;
-    try {
-      shot = item.wv ? await captureGuest(item.wv, item.guestRect, item.guestViewport) : await captureDom(item.el);
-    } catch (failure) {
-      setError(t(captureErrorKey(failure)));
-    }
-    if (!shot) return;
-    setItems((prev) => prev.map((entry) => entry.id === item.id ? Object.assign({}, entry, { shot }) : entry));
-  };
-  const openDraft = (payload) => {
-    setError("");
-    setDraft(payload);
-  };
-  const openRegion = (rect, wv, viewport, guestId) => {
-    if (draftRef.current || busyRef.current) return;
-    const anchor = wv ? null : pickAt(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    const anchorRect = anchor ? anchor.getBoundingClientRect() : null;
-    const current = {
-      id: "a" + Math.random().toString(36).slice(2),
-      kind: "region",
-      desc: { label: t("region.label"), rect, surface: wv ? "browser" : "harness" },
-      rect: wv ? null : rect,
-      wv: wv || null,
-      guestRect: wv ? rect : null,
-      guestId: guestId || null,
-      liveRect: wv ? rect : null,
-      anchorEl: anchorRect ? anchor : null,
-      anchorOffset: anchorRect ? { dx: rect.x - anchorRect.left, dy: rect.y - anchorRect.top } : null,
-      scrollChain: anchorRect ? scrollChainOf(anchor) : null,
-      guestViewport: viewport,
-      comment: "",
-      shot: null,
-      capturePending: true,
-      docRect: wv ? { ...rect, x: rect.x + viewport.x, y: rect.y + viewport.y } : null
     };
-    openDraft(current);
-    setHover(null);
-    const pending = wv ? captureGuest(wv, rect, viewport) : captureHostRegion(rect);
-    pending.then((shot) => {
-      if (draftRef.current?.id !== current.id || !store.get().active) return;
-      if (!shot) throw new CaptureError("changed");
-      setDraft({ ...draftRef.current, shot, capturePending: false });
-    }).catch((failure) => {
-      if (draftRef.current?.id !== current.id) return;
-      setDraft({ ...draftRef.current, capturePending: false });
-      setError(t(captureErrorKey(failure)));
-    });
-  };
-  const openGuestPick = (wv, payload) => {
-    if (draftRef.current) return;
-    const scroll = payload.scroll || { x: 0, y: 0 };
-    scrollRef.current.set(wv, scroll);
-    const docRect = {
-      x: payload.rect.x + scroll.x,
-      y: payload.rect.y + scroll.y,
-      width: payload.rect.width,
-      height: payload.rect.height
+    const detach = (wv) => {
+      const index = guests.findIndex((pair) => pair[0] === wv);
+      if (index === -1) return;
+      try {
+        guests[index][0].removeEventListener("console-message", guests[index][1]);
+        wv.removeEventListener("did-start-navigation", guests[index][2]);
+      } catch (_error) {
+      }
+      guests.splice(index, 1);
+      guestsRef.current = guests;
     };
-    openDraft({
-      id: "a" + Math.random().toString(36).slice(2),
-      desc: { tag: payload.tag, label: payload.label, text: payload.text, selector: payload.selector, rect: payload.rect },
-      el: null,
-      wv,
-      guestId: payload.id,
-      liveRect: payload.rect,
-      guestRect: payload.rect,
-      guestViewport: payload.viewport,
-      docRect,
-      rect: null,
-      comment: "",
-      shot: null,
-      editing: false
-    });
-  };
-  const saveDraft = () => {
-    const current = draftRef.current;
-    if (!current || current.capturePending || current.kind === "region" && !current.shot) return;
-    const exists = itemsRef.current.some((entry) => entry.id === current.id);
-    if (exists) {
-      setItems((prev) => prev.map((entry) => entry.id === current.id ? Object.assign({}, entry, { comment: current.comment }) : entry));
-    } else {
-      const item = { ...current, editing: false };
-      setItems(itemsRef.current.concat([item]));
-      if (!item.shot) capture(item).catch(() => {
+    const forgetGuest = (wv) => {
+      for (const key of Array.from(basesRef.current.keys())) {
+        const base = basesRef.current.get(key);
+        if (base && base.surface === "browser" && base.wv === wv) basesRef.current.delete(key);
+      }
+      guestStatesRef.current.delete(wv);
+      setItems((prev) => prev.filter((entry) => !(entry.surface === "browser" && entry.wv === wv)));
+      setHover(null);
+    };
+    const onMessage = (wv, ...args) => {
+      const message = args.map((value) => typeof value === "string" ? value : value && value.message).find((value) => typeof value === "string" && value.indexOf(MARK) === 0);
+      if (!message) return;
+      let payload;
+      try {
+        payload = JSON.parse(message.slice(MARK.length));
+      } catch (_error) {
+        return;
+      }
+      if (payload && payload.kind === "escape") {
+        onEscape();
+        return;
+      }
+      if (payload && (payload.kind === "ready" || payload.kind === "scroll")) {
+        if (Number.isFinite(payload.width) && Number.isFinite(payload.height)) {
+          guestStatesRef.current.set(wv, {
+            width: payload.width,
+            height: payload.height,
+            x: Number(payload.x) || 0,
+            y: Number(payload.y) || 0,
+            instance: payload.instance || ""
+          });
+        }
+        if (payload.kind === "scroll") {
+          setHover(null);
+          bump();
+        }
+        return;
+      }
+      if (payload && payload.kind === "pin") {
+        const item2 = itemsRef.current.find((entry) => entry.guestId === payload.id);
+        if (item2) openDraft(item2);
+        return;
+      }
+      if (!payload || !["pick", "region"].includes(payload.kind)) return;
+      const st = payload.viewport;
+      if (!st || !["width", "height", "x", "y"].every((key) => Number.isFinite(st[key]))) return;
+      const rect = clipRect(payload.rect, st.width, st.height, payload.kind === "region" ? 4 : 2);
+      if (!rect) return;
+      guestStatesRef.current.set(wv, {
+        width: st.width,
+        height: st.height,
+        x: st.x,
+        y: st.y,
+        instance: st.instance || ""
       });
-    }
-    setDraft(null);
-  };
-  const removeItem = (id) => {
-    forgetGuestDraft(draftRef.current);
-    setItems((prev) => prev.filter((entry) => entry.id !== id));
-    setDraft(null);
-  };
-  const stop = (event) => {
-    if (event.target instanceof Element && event.target.closest(UI)) return;
-    event.preventDefault();
-    event.stopPropagation();
-  };
+      if (payload.kind === "region") {
+        const item2 = addItem(
+          "browser",
+          wv,
+          { width: st.width, height: st.height, x: st.x, y: st.y, instance: st.instance || "" },
+          rect,
+          { label: t("region.label"), surface: "browser" },
+          payload.id
+        );
+        setDraft({ itemId: item2.id, comment: "", editing: false });
+        setHover(null);
+        return;
+      }
+      const item = addItem(
+        "browser",
+        wv,
+        { width: st.width, height: st.height, x: st.x, y: st.y, instance: st.instance || "" },
+        rect,
+        {
+          tag: clip(payload.tag, 40),
+          label: clip(payload.label, 90),
+          text: clip(payload.text, 200),
+          selector: clip(payload.selector, 300)
+        },
+        payload.id
+      );
+      setDraft({ itemId: item.id, comment: "", editing: false });
+      setHover(null);
+    };
+    const install = () => {
+      if (disposed) return;
+      for (const wv of Array.from(document.querySelectorAll("webview"))) {
+        if (guests.some((pair) => pair[0] === wv)) continue;
+        const rect = wv.getBoundingClientRect();
+        if (rect.width < 4 || rect.height < 4) continue;
+        if (!watched.has(wv)) {
+          watched.add(wv);
+          wv.addEventListener("did-stop-loading", () => {
+            detach(wv);
+            install();
+          });
+        }
+        try {
+          const pending = wv.executeJavaScript(guestInstallScript());
+          if (pending && typeof pending.catch === "function") pending.catch(() => {
+          });
+        } catch (_error) {
+        }
+        const handler = (...args) => onMessage(wv, ...args);
+        const navigate = () => forgetGuest(wv);
+        wv.addEventListener("console-message", handler);
+        wv.addEventListener("did-start-navigation", navigate);
+        guests.push([wv, handler, navigate]);
+      }
+      guestsRef.current = guests;
+    };
+    const uninstall = () => {
+      disposed = true;
+      for (const pair of guests) {
+        try {
+          pair[0].removeEventListener("console-message", pair[1]);
+          pair[0].removeEventListener("did-start-navigation", pair[2]);
+          const pending = pair[0].executeJavaScript(GUEST_REMOVE);
+          if (pending && typeof pending.catch === "function") pending.catch(() => {
+          });
+        } catch (_error) {
+        }
+      }
+      guests.length = 0;
+      guestsRef.current = [];
+    };
+    install();
+    const poll = setInterval(() => {
+      install();
+      for (const pair of guests) adoptInto(pair[0]);
+    }, 150);
+    return () => {
+      clearInterval(poll);
+      uninstall();
+    };
+  }, [isActive, t]);
   React.useEffect(() => {
     if (!isActive) return void 0;
     const onMove = (event) => {
-      if (regionPickerRef.current?.isDragging() || draftRef.current || busyRef.current) return;
-      if (event.target instanceof Element && event.target.closest(UI)) return;
+      if (pickerRef.current && pickerRef.current.isDragging()) return;
+      if (draftRef.current || busyRef.current) return;
+      if (isUiTarget(event.target)) return;
       const el = pickAt(event.clientX, event.clientY);
       if (!el) {
         setHover(null);
@@ -3374,47 +3568,45 @@ function Overlay({ ctx, store, t }) {
         setError(t("error.guestHint"));
         return;
       }
-      openDraft({
-        id: "a" + Math.random().toString(36).slice(2),
-        desc: describeElement(el),
-        el,
-        wv: null,
-        guestRect: null,
-        rect: null,
-        comment: "",
-        shot: null,
-        editing: false
-      });
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return;
+      const item = addItem(
+        "harness",
+        null,
+        hostState(),
+        { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        describeElement(el),
+        null
+      );
+      setDraft({ itemId: item.id, comment: "", editing: false });
+      setHover(null);
     };
-    const onKey = (event) => {
-      if (event.key !== "Escape") return;
+    const stop = (event) => {
+      if (isUiTarget(event.target)) return;
       event.preventDefault();
-      event.stopImmediatePropagation();
-      if (regionPickerRef.current?.cancel()) return;
+      event.stopPropagation();
+    };
+    const onEscape2 = () => {
+      if (pickerRef.current && pickerRef.current.cancel()) return;
       const current = draftRef.current;
       if (current) {
-        if (current.editing || current.capturePending) {
-          forgetGuestDraft(current);
-          setDraft(null);
-        } else saveDraft();
+        const item = itemsRef.current.find((entry) => entry.id === current.itemId);
+        if (!current.editing && item) removeItem(item.id);
+        else setDraft(null);
         return;
       }
       store.set({ active: false });
     };
-    const invalidate = () => {
-      regionPickerRef.current?.cancel();
-      if (draftRef.current?.capturePending) setDraft(null);
-      setHover(null);
-      setTick((value) => value + 1);
-    };
-    const onScroll = (event) => {
-      if (event.target instanceof Element && event.target.closest(UI)) return;
-      invalidate();
+    const escapeHandler = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      onEscape2();
     };
     const picker = installRegionPicker(document, {
-      ignore: (event) => event.target instanceof Element && !!event.target.closest(UI),
+      ignore: (event) => isUiTarget(event.target),
       blocked: () => !!draftRef.current || busyRef.current,
-      bounds: () => ({ width: innerWidth, height: innerHeight }),
+      bounds: () => ({ width: window.innerWidth, height: window.innerHeight }),
       preview: setHover,
       click: pickElement,
       select: (rect) => {
@@ -3426,181 +3618,63 @@ function Overlay({ ctx, store, t }) {
           setError(t("error.guestHint"));
           return;
         }
-        openRegion(rect);
+        const item = addItem("harness", null, hostState(), rect, { label: t("region.label"), surface: "harness" }, null);
+        setDraft({ itemId: item.id, comment: "", editing: false });
       }
     });
-    regionPickerRef.current = picker;
+    pickerRef.current = picker;
+    const onScroll = (event) => {
+      if (isUiTarget(event.target)) return;
+      setHover(null);
+      bump();
+    };
     const onBlur = () => picker.cancel();
     window.addEventListener("blur", onBlur);
     document.addEventListener("mousemove", onMove, true);
     document.addEventListener("mousedown", stop, true);
     document.addEventListener("pointerdown", stop, true);
     document.addEventListener("click", stop, true);
-    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("keydown", escapeHandler, true);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll, true);
-    let disposed = false;
-    const guests = [];
-    const watched = /* @__PURE__ */ new WeakSet();
-    const detach = (wv) => {
-      const index = guests.findIndex((pair) => pair[0] === wv);
-      if (index === -1) return;
-      try {
-        guests[index][0].removeEventListener("console-message", guests[index][1]);
-      } catch (_error) {
-      }
-      try {
-        wv.removeEventListener("did-start-navigation", invalidate);
-      } catch (_error) {
-      }
-      guests.splice(index, 1);
-      guestsRef.current = guests;
-    };
-    const install = () => {
-      if (disposed) return;
-      for (const wv of Array.from(document.querySelectorAll("webview"))) {
-        if (guests.some((pair) => pair[0] === wv)) continue;
-        const rect = wv.getBoundingClientRect();
-        if (rect.width < 4 || rect.height < 4) continue;
-        if (!watched.has(wv)) {
-          watched.add(wv);
-          wv.addEventListener("did-stop-loading", () => {
-            detach(wv);
-            install();
-          });
-        }
-        try {
-          const pending = wv.executeJavaScript(guestInstallScript());
-          if (pending && typeof pending.catch === "function") pending.catch(() => {
-          });
-        } catch (_error) {
-        }
-        const onMessage = (...args) => {
-          const message = args.map((value) => typeof value === "string" ? value : value && value.message).find((value) => typeof value === "string" && value.indexOf(MARK) === 0);
-          if (!message) return;
-          try {
-            const payload = JSON.parse(message.slice(MARK.length));
-            if (payload?.kind === "escape") {
-              onKey({ key: "Escape", preventDefault() {
-              }, stopImmediatePropagation() {
-              } });
-              return;
-            }
-            if (payload && ["scroll", "ready"].includes(payload.kind)) {
-              if (payload.kind === "scroll") invalidate();
-              scrollRef.current.set(wv, { x: Number(payload.x) || 0, y: Number(payload.y) || 0 });
-              setTick((value) => value + 1);
-              return;
-            }
-            if (payload && payload.kind === "pin") {
-              const item = itemsRef.current.find((entry) => entry.guestId === payload.id);
-              if (item) openDraft(Object.assign({}, item, { editing: true }));
-              return;
-            }
-            if (payload && payload.kind === "move") {
-              const id = typeof payload.id === "string" ? payload.id : "";
-              const rect3 = payload.rect;
-              const viewport2 = payload.viewport;
-              if (!id || !rect3 || !viewport2) return;
-              const next = { id, rect: rect3, viewport: viewport2 };
-              setItems((prev) => prev.some((entry) => entry.guestId === id) ? prev.map((entry) => entry.guestId === id ? Object.assign({}, entry, { liveRect: next.rect, guestViewport: next.viewport }) : entry) : prev);
-              if (draftRef.current && draftRef.current.guestId === id) {
-                setDraft(Object.assign({}, draftRef.current, { liveRect: next.rect, guestViewport: next.viewport }));
-              }
-              return;
-            }
-            if (!payload || !["pick", "region"].includes(payload.kind)) return;
-            const viewport = payload.viewport;
-            if (!viewport || typeof viewport.instance !== "string" || !["width", "height", "x", "y", "revision"].every((key) => Number.isFinite(viewport[key]))) return;
-            const rect2 = clipRect(payload.rect, viewport.width, viewport.height, payload.kind === "region" ? 4 : 2);
-            if (!rect2) return;
-            scrollRef.current.set(wv, { x: viewport.x, y: viewport.y });
-            if (payload.kind === "region") {
-              openRegion(rect2, wv, viewport, payload.id);
-              return;
-            }
-            openGuestPick(wv, {
-              tag: clip(payload.tag, 40),
-              label: clip(payload.label, 90),
-              text: clip(payload.text, 200),
-              selector: clip(payload.selector, 300),
-              rect: rect2,
-              scroll: { x: viewport.x, y: viewport.y },
-              viewport
-            });
-          } catch (_error) {
-          }
-        };
-        wv.addEventListener("console-message", onMessage);
-        wv.addEventListener("did-start-navigation", invalidate);
-        guests.push([wv, onMessage]);
-      }
-      guestsRef.current = guests;
-    };
-    const uninstall = () => {
-      disposed = true;
-      for (const pair of guests) {
-        try {
-          pair[0].removeEventListener("console-message", pair[1]);
-          pair[0].removeEventListener("did-start-navigation", invalidate);
-          const pending = pair[0].executeJavaScript(GUEST_REMOVE);
-          if (pending && typeof pending.catch === "function") pending.catch(() => {
-          });
-        } catch (_error) {
-        }
-      }
-      guests.length = 0;
-      guestsRef.current = [];
-    };
-    install();
-    const poll = setInterval(() => {
-      install();
-      for (const pair of guests) {
-        const wv = pair[0];
-        if (wv.__annotPolling) continue;
-        const rect = wv.getBoundingClientRect();
-        if (rect.width < 4 || rect.height < 4) continue;
-        wv.__annotPolling = true;
-        try {
-          const pending = wv.executeJavaScript("window.__dshAnnotate && window.__dshAnnotate.adopt ? (window.__dshAnnotate.adopt(" + JSON.stringify(adoptList(wv)) + "), window.__dshAnnotate.geometry()) : null");
-          Promise.resolve(pending).then((list) => {
-            if (Array.isArray(list) && list.length) applyGuestGeometry(wv, list);
-          }).catch(() => {
-          }).finally(() => {
-            wv.__annotPolling = false;
-          });
-        } catch (_error) {
-          wv.__annotPolling = false;
-        }
-      }
-    }, 120);
     return () => {
-      clearInterval(poll);
       picker.destroy();
-      regionPickerRef.current = null;
+      pickerRef.current = null;
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("mousemove", onMove, true);
       document.removeEventListener("mousedown", stop, true);
       document.removeEventListener("pointerdown", stop, true);
       document.removeEventListener("click", stop, true);
-      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("keydown", escapeHandler, true);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll, true);
-      uninstall();
     };
-  }, [isActive, store, t]);
-  React.useEffect(() => {
-    if (!isActive) {
-      setDraft(null);
-      setHover(null);
+  }, [isActive, t]);
+  const onEscape = () => {
+    if (draftRef.current) {
+      const current = draftRef.current;
+      const item = itemsRef.current.find((entry) => entry.id === current.itemId);
+      if (!current.editing && item) removeItem(item.id);
+      else setDraft(null);
+      return;
     }
-  }, [isActive]);
+    store.set({ active: false });
+  };
   React.useEffect(() => {
     if (!isActive) return;
-    signalGuests(draft ? GUEST_FREEZE : GUEST_RESUME);
+    const code = draft ? GUEST_FREEZE : GUEST_RESUME;
+    for (const pair of guestsRef.current) {
+      try {
+        const pending = pair[0].executeJavaScript(code);
+        if (pending && typeof pending.catch === "function") pending.catch(() => {
+        });
+      } catch (_error) {
+      }
+    }
   }, [draft, isActive]);
-  const send = async () => {
-    if (busy) return;
+  const insert = async () => {
+    if (busyRef.current) return;
+    if (itemsRef.current.length === 0) return;
     setBusy(true);
     setError("");
     try {
@@ -3608,114 +3682,129 @@ function Overlay({ ctx, store, t }) {
       const sessions = ctx.get("sessions");
       const sessionId = state.sessionId;
       const session = sessionId && sessions ? (sessions.binding(sessionId) || {}).session : void 0;
-      if (!conversation || !session) throw new Error(t("error.noSession"));
-      const resolved = [];
-      for (let index = 0; index < itemsRef.current.length; index += 1) {
-        const item = itemsRef.current[index];
-        let shot = item.shot;
-        let captureFailure;
-        if (!shot && item.kind !== "region") {
-          try {
-            shot = item.wv ? await captureGuest(item.wv, item.guestRect, item.guestViewport) : await captureDom(item.el);
-          } catch (failure) {
-            captureFailure = failure;
-            shot = null;
-          }
-        }
-        resolved.push(Object.assign({}, item, { shot, captureFailure }));
+      if (!conversation || !session || !sessionId) throw new Error(t("error.noSession"));
+      const shell = conversation.input && conversation.input.shell ? conversation.input.shell(sessionId) : null;
+      if (!shell || typeof shell.addAttachments !== "function") throw new Error(t("error.unsupportedApi"));
+      if (shell.snapshot && ["adjudicating", "submitting", "sending"].includes(shell.snapshot.phase)) {
+        throw new Error(t("error.composerBusy"));
       }
-      const failed = resolved.find((item) => !item.shot);
-      if (failed) {
-        setError(t(captureErrorKey(failed.captureFailure)));
-        return;
+      const ordered = itemsRef.current.slice().sort((a, b) => a.index - b.index);
+      const keys = [];
+      for (const item of ordered) if (!keys.includes(item.key)) keys.push(item.key);
+      for (const key of keys) {
+        const base = basesRef.current.get(key);
+        if (!base) throw new Error(t("error.captureFailed"));
+        if (base.ready) await base.ready;
+        if (!base.dataUrl) throw new Error(t(base.errorKey || "error.captureFailed"));
       }
-      const files = [];
-      resolved.forEach((item, index) => {
-        if (!item.shot) return;
-        const decoded = dataUrlToBytes(item.shot);
-        files.push(new File([decoded.bytes], "annotation-" + (index + 1) + ".png", { type: decoded.mediaType }));
+      const groups = [];
+      for (const key of keys) {
+        const base = basesRef.current.get(key);
+        const groupItems = ordered.filter((item) => item.key === key);
+        if (!groupItems.length) continue;
+        const dataUrl = await drawAnnotations(base, groupItems);
+        groups.push({ base, items: groupItems, dataUrl, url: base.url });
+      }
+      if (!groups.length) throw new Error(t("error.captureFailed"));
+      const files = groups.map((group, index) => {
+        const decoded = dataUrlToBytes(group.dataUrl);
+        return new File([decoded.bytes], "annotation-" + (index + 1) + ".png", { type: decoded.mediaType });
       });
-      let shell = null;
-      try {
-        shell = conversation.input && sessionId ? conversation.input.shell(sessionId) : null;
-      } catch (_error) {
-        shell = null;
+      const snapshot = session.getSnapshot ? session.getSnapshot() : {};
+      const uploadImages = snapshot.subagent === null;
+      if (typeof conversation.createDrafts !== "function") throw new Error(t("error.unsupportedApi"));
+      const drafts = conversation.createDrafts(sessionId, files, uploadImages) || [];
+      if (!drafts.length) throw new Error(t("error.captureFailed"));
+      const added = shell.addAttachments(drafts.map((entry) => entry.id));
+      if (!added) {
+        if (typeof conversation.releaseDraftAttachments === "function") conversation.releaseDraftAttachments(drafts);
+        throw new Error(t("error.composerBusy"));
       }
-      const typed = shell && shell.snapshot ? String(shell.snapshot.draft || "").trim() : "";
-      const annotations = formatAnnotations(resolved, t);
-      const text = typed ? typed + "\n\n" + annotations : annotations;
-      if (typeof conversation.createDrafts !== "function" || typeof conversation.sendSession !== "function") {
-        throw new Error(t("error.unsupportedApi"));
-      }
-      const drafts = conversation.createDrafts(sessionId, files, false) || [];
-      const result = await conversation.sendSession(session, text, drafts.map((entry) => entry.id), "queue");
-      if (!result || result.kind !== "success") throw new Error(t("error.sendFailed"));
-      if (typed && shell) {
-        try {
-          shell.setDraft("");
-        } catch (_error) {
-        }
-      }
-      setItems([]);
+      const text = formatInsertText(
+        groups.map((group) => ({
+          url: group.url,
+          viewport: group.base.viewport,
+          scroll: group.base.state,
+          items: group.items
+        })),
+        t
+      );
+      const typed = String(shell.snapshot && shell.snapshot.draft || "");
+      shell.setDraft(typed.trim() ? typed.replace(/\s+$/, "") + "\n\n" + text : text);
+      clearAll();
       store.set({ active: false });
     } catch (failure) {
-      setError(String(failure && failure.message || failure));
+      setError(failure instanceof CaptureError ? t(captureErrorKey(failure)) : String(failure && failure.message || failure));
     } finally {
       setBusy(false);
     }
   };
   if (!isActive) return null;
+  const draftItem = draft ? itemsRef.current.find((item) => item.id === draft.itemId) : null;
   const children = [];
+  const pendingBases = Array.from(basesRef.current.values()).filter((base) => base.status === "capturing").length;
+  const readyBases = Array.from(basesRef.current.values()).filter((base) => base.status === "ready").length;
   children.push(
     React.createElement(
       "div",
       { key: "bar", "data-annot-ui": "bar", className: "dsh-annot-bar" },
-      React.createElement("span", { className: "dsh-annot-bar__hint" }, t(draft ? draft.capturePending ? "bar.capturing" : "bar.hintDraft" : "bar.hint")),
+      React.createElement(
+        "span",
+        { className: "dsh-annot-bar__hint" },
+        t(draft ? "bar.hintDraft" : pendingBases > 0 ? "bar.capturing" : "bar.hint")
+      ),
       React.createElement("span", { className: "dsh-annot-bar__count" }, String(items.length)),
-      ...items.flatMap((item, index) => item.kind === "region" && boxOf(itemRect(item)) === null ? [
-        React.createElement("button", {
-          key: item.id,
-          className: "dsh-annot-btn",
-          disabled: busy || !!draft,
-          title: item.comment || t("pin.empty"),
-          "aria-label": t("pin.edit", { index: index + 1 }),
-          onClick: () => openDraft({ ...item, editing: true })
-        }, String(index + 1))
-      ] : []),
-      items.length > 0 ? React.createElement("button", { key: "clear", className: "dsh-annot-btn dsh-annot-btn--danger", onClick: () => setItems([]) }, t("bar.clear")) : null,
-      React.createElement("button", { key: "send", className: "dsh-annot-btn dsh-annot-btn--primary", disabled: items.length === 0 || busy || !!draft, onClick: send }, busy ? t("bar.sending") : t("bar.send", { count: items.length })),
+      items.length > 0 && readyBases > 0 ? React.createElement("span", { className: "dsh-annot-bar__hint" }, t("bar.shots", { count: readyBases })) : null,
+      ...items.filter((item) => !itemVisible(item)).map(
+        (item) => React.createElement(
+          "button",
+          {
+            key: "chip-" + item.id,
+            type: "button",
+            className: "dsh-annot-chip",
+            "data-annot-ui": "chip",
+            title: item.comment || t("pin.empty"),
+            onClick: () => openDraft(item),
+            disabled: busy
+          },
+          String(item.index)
+        )
+      ),
+      items.length > 0 ? React.createElement("button", { key: "clear", className: "dsh-annot-btn dsh-annot-btn--danger", onClick: () => clearAll(false) }, t("bar.clear")) : null,
+      React.createElement(
+        "button",
+        { key: "insert", className: "dsh-annot-btn dsh-annot-btn--primary", disabled: items.length === 0 || busy || !!draft, onClick: insert },
+        busy ? t("bar.inserting") : t("bar.insert", { count: items.length })
+      ),
       React.createElement("button", { key: "close", className: "dsh-annot-btn", onClick: () => {
         setDraft(null);
         store.set({ active: false });
       } }, t("bar.close"))
     )
   );
-  const frozen = draft && !(draft.wv && draft.kind !== "region") ? boxOf(draftRectOf(draft)) : null;
-  if (draft && frozen) {
-    const label = clip(draft.desc && (draft.desc.label || draft.desc.tag) || "", 60);
-    children.push(React.createElement("div", { key: "frozen", className: "dsh-annot-hover", style: { left: frozen.x, top: frozen.y, width: frozen.width, height: frozen.height } }));
-    children.push(
-      React.createElement(
-        "div",
-        { key: "frozentag", className: "dsh-annot-hover__tag", style: { left: Math.max(4, frozen.x), top: frozen.y + 2 < 24 ? frozen.y + 2 : frozen.y - 18 } },
-        (draft.desc && draft.desc.tag || "") + (label ? " \xB7 " + label : "")
-      )
-    );
-  }
-  if (hover && !draft) {
+  const hoverRect = hover ? boxOf(hover) : null;
+  if (hover && hoverRect && !draft) {
     const label = clip(hover.desc && (hover.desc.label || hover.desc.tag) || "", 60);
-    children.push(React.createElement("div", { key: "hover", className: "dsh-annot-hover", style: { left: hover.x, top: hover.y, width: hover.width, height: hover.height } }));
+    children.push(
+      React.createElement("div", { key: "hover", className: "dsh-annot-hover", style: { left: hoverRect.x, top: hoverRect.y, width: hoverRect.width, height: hoverRect.height } })
+    );
     children.push(
       React.createElement(
         "div",
-        { key: "hovertag", className: "dsh-annot-hover__tag", style: { left: Math.max(4, hover.x), top: hover.y + 2 < 24 ? hover.y + 2 : hover.y - 18 } },
+        {
+          key: "hovertag",
+          className: "dsh-annot-hover__tag",
+          style: { left: Math.max(4, hoverRect.x), top: hoverRect.y + 2 < 24 ? hoverRect.y + 2 : hoverRect.y - 18 }
+        },
         (hover.desc ? hover.desc.tag : "") + (label ? " \xB7 " + label : "")
       )
     );
   }
-  items.forEach((item, index) => {
-    if (item.wv && item.liveRect) return;
-    const rect = boxOf(itemRect(item));
+  items.forEach((item) => {
+    if (item.surface === "browser") return;
+    if (item.id === (draft && draft.itemId)) return;
+    if (!itemVisible(item)) return;
+    const rect = boxOf(item.rect);
     if (!rect) return;
     children.push(
       React.createElement("div", {
@@ -3734,23 +3823,34 @@ function Overlay({ ctx, store, t }) {
           style: { left: Math.max(0, rect.x - 11), top: Math.max(0, rect.y - 11) },
           title: item.comment || t("pin.empty"),
           disabled: busy,
-          onClick: () => openDraft(Object.assign({}, item, { editing: true }))
+          onClick: () => openDraft(item)
         },
-        String(index + 1)
+        String(item.index)
       )
     );
   });
   if (draft) {
-    const rect = boxOf(draftRectOf(draft)) || { x: 40, y: 60, width: 0, height: 0 };
-    const width = 300;
-    const left = Math.max(8, Math.min(rect.x, (window.innerWidth || 1200) - width - 8));
-    const below = rect.y + rect.height + 8;
-    const top = below + 210 > (window.innerHeight || 800) ? Math.max(8, rect.y - 210) : below;
+    let rect = draftItem ? boxOf(draftItem.rect) : null;
+    if (draftItem && draftItem.surface === "browser" && draftItem.wv) {
+      const st = guestState(draftItem.wv);
+      const outer = draftItem.wv.getBoundingClientRect();
+      if (st && st.width > 0 && rect) {
+        const scale = outer.width / st.width;
+        rect = { x: outer.left + rect.x * scale, y: outer.top + rect.y * scale, width: rect.width * scale, height: rect.height * scale };
+      }
+    }
+    const anchor = rect || { x: 48, y: 72, width: 0, height: 0 };
+    const width = 320;
+    const left = Math.max(8, Math.min(anchor.x, (window.innerWidth || 1200) - width - 8));
+    const below = anchor.y + anchor.height + 8;
+    const top = below + 230 > (window.innerHeight || 800) ? Math.max(8, anchor.y - 230) : below;
+    const label = draftItem && draftItem.desc && (draftItem.desc.label || draftItem.desc.tag) || "";
+    const where = draftItem ? draftItem.surface === "browser" ? t("card.browser") : draftItem.desc && draftItem.desc.selector ? draftItem.desc.selector : "" : "";
     children.push(
       React.createElement(
         "div",
         { key: "card", "data-annot-ui": "card", className: "dsh-annot-card", style: { left, top } },
-        React.createElement("div", { className: "dsh-annot-card__title" }, clip(draft.desc && (draft.desc.label || draft.desc.tag) || "", 70)),
+        React.createElement("div", { className: "dsh-annot-card__title" }, clip(label, 70)),
         React.createElement("textarea", {
           className: "dsh-annot-card__input",
           autoFocus: true,
@@ -3759,16 +3859,37 @@ function Overlay({ ctx, store, t }) {
           value: draft.comment,
           onChange: (event) => setDraft(Object.assign({}, draftRef.current, { comment: event.target.value }))
         }),
-        React.createElement("div", { className: "dsh-annot-card__where" }, draft.kind === "region" ? t("prompt.region", { surface: draft.desc.surface, ...draft.desc.rect }) : draft.desc && draft.desc.selector || ""),
+        React.createElement("div", { className: "dsh-annot-card__where" }, where),
         React.createElement(
           "div",
           { className: "dsh-annot-card__rows" },
-          React.createElement("button", { key: "cancel", className: "dsh-annot-btn", onClick: () => {
-            forgetGuestDraft(draftRef.current);
-            setDraft(null);
-          } }, t("card.cancel")),
-          draft.editing ? React.createElement("button", { key: "delete", className: "dsh-annot-btn dsh-annot-btn--danger", onClick: () => removeItem(draft.id) }, t("card.delete")) : null,
-          React.createElement("button", { key: "save", className: "dsh-annot-btn dsh-annot-btn--primary", disabled: !!draft.capturePending || draft.kind === "region" && !draft.shot, onClick: saveDraft }, t("card.save"))
+          React.createElement(
+            "button",
+            {
+              key: "cancel",
+              className: "dsh-annot-btn",
+              onClick: () => {
+                if (!draft.editing) removeItem(draft.itemId);
+                else setDraft(null);
+              }
+            },
+            t("card.cancel")
+          ),
+          draft.editing ? React.createElement("button", { key: "delete", className: "dsh-annot-btn dsh-annot-btn--danger", onClick: () => removeItem(draft.itemId) }, t("card.delete")) : null,
+          React.createElement(
+            "button",
+            {
+              key: "save",
+              className: "dsh-annot-btn dsh-annot-btn--primary",
+              onClick: () => {
+                const current = draftRef.current;
+                if (!current) return;
+                setItems((prev) => prev.map((entry) => entry.id === current.itemId ? Object.assign({}, entry, { comment: current.comment }) : entry));
+                setDraft(null);
+              }
+            },
+            t("card.save")
+          )
         )
       )
     );
@@ -3776,20 +3897,27 @@ function Overlay({ ctx, store, t }) {
   if (error) children.push(React.createElement("div", { key: "error", "data-annot-ui": "error", className: "dsh-annot-error" }, error));
   return React.createElement("div", { "data-annot-ui": "layer", className: "dsh-annot-layer" }, children);
 }
+function safeGuestUrl(wv) {
+  try {
+    return wv && wv.getURL && wv.getURL() || "";
+  } catch (_error) {
+    return "";
+  }
+}
 function guestInstallScript() {
   const root = getComputedStyle(document.documentElement);
   const read = (name, fallback) => (root.getPropertyValue(name) || "").trim() || fallback;
   const accent = read("--dsw-alias-button-primary-fill", read("--dsw-alias-brand-primary", "#3b82f6"));
   const onAccent = read("--dsw-alias-label-primary-foreground", "#fff");
-  return GUEST_INSTALL.split("__ACCENT__").join(accent).split("__ON_ACCENT__").join(onAccent);
+  return GUEST_INSTALL.split("__BOX__").join(BOX).split("__ACCENT__").join(accent).split("__ON_ACCENT__").join(onAccent);
 }
 function apply(ctx) {
   ctx.effect(() => {
     if (typeof document === "undefined") return void 0;
-    const marker = "dsh-annotate-anything/client.css";
+    const marker = "dsh-annotate-viewport/client.css";
     if (document.querySelector('style[data-plugin-css="' + marker + '"]') === null) {
       const style = document.createElement("style");
-      style.dataset.plugin = "dsh-annotate-anything";
+      style.dataset.plugin = "dsh-annotate-viewport";
       style.dataset.pluginCss = marker;
       style.textContent = CSS2;
       document.head.appendChild(style);
@@ -3798,21 +3926,21 @@ function apply(ctx) {
       const style = document.querySelector('style[data-plugin-css="' + marker + '"]');
       if (style) style.remove();
     };
-  }, "annotate-anything: styles");
-  ctx.effect(() => ctx.locale.register(NS, { en: DICT_EN, ru: DICT_RU }), "annotate-anything: dictionaries");
+  }, "annotate-viewport: styles");
+  ctx.effect(() => ctx.locale.register(NS, { en: DICT_EN, zh: DICT_ZH }), "annotate-viewport: dictionaries");
   const t = ctx.locale.bind(NS);
   const store = createStore();
   ctx.slots.inject(
     "conversation.input.left",
     () => ctx.slots.register(
-      { name: "conversation.input.left", id: "annotate-anything-trigger", order: 95, locale: NS, label: () => t("trigger.title") },
+      { name: "conversation.input.left", id: "annotate-viewport-trigger", order: 95, locale: NS, label: () => t("trigger.title") },
       (props) => React.createElement(Trigger, { props, store, t })
     )
   );
   ctx.slots.inject(
     "shell.overlay",
     () => ctx.slots.register(
-      { name: "shell.overlay", id: "annotate-anything-overlay", order: 400 },
+      { name: "shell.overlay", id: "annotate-viewport-overlay", order: 400 },
       () => React.createElement(Overlay, { ctx, store, t })
     )
   );
@@ -3820,78 +3948,88 @@ function apply(ctx) {
 var DICT_EN = {
   "trigger.title": "Annotate",
   "trigger.titleCount": "Annotate \u2014 {count} kept",
-  "bar.hint": "Click an element or drag a region",
-  "region.label": "Selected region",
-  "bar.capturing": "Capturing\u2026",
-  "prompt.region": "   {surface} region (CSS px): x={x}, y={y}, width={width}, height={height}",
-  "bar.hintDraft": "Describe the annotation",
-  "bar.send": "Send {count}",
+  "bar.hint": "Click an element, or drag over a region of the page",
+  "bar.hintDraft": "Describe this annotation",
+  "bar.capturing": "Taking a full screenshot\u2026",
+  "bar.shots": "screenshots: {count}",
+  "bar.insert": "Insert {count} into input",
+  "bar.inserting": "Inserting\u2026",
   "bar.clear": "Clear",
-  "bar.sending": "Sending\u2026",
   "bar.close": "Close",
+  "region.label": "Selected region",
   "card.placeholder": "What should change here?",
   "card.save": "Add",
   "card.cancel": "Cancel",
   "card.delete": "Delete",
+  "card.browser": "Inside the Browser page",
   "pin.empty": "No comment",
   "pin.edit": "Edit annotation {index}",
-  "error.noSession": "Open a chat before sending annotations",
-  "error.sendFailed": "The annotations were not sent",
-  "error.unsupportedApi": "This Harness version does not support sending image drafts. Update Harness before sending.",
-  "error.captureFailed": "The screenshot could not be rendered. Select the content again.",
-  "error.captureInvalid": "The selection is outside the visible page or is too small. Select it again.",
-  "error.captureTooLarge": "The selection exceeds 2.5 million CSS pixels. Select a smaller area.",
-  "error.captureAssets": "An image or style in this selection could not be rendered. Check that the page resources have loaded.",
-  "error.captureProtected": "This selection contains protected or cross-origin canvas/video pixels that DOM capture cannot read.",
-  "error.captureDecode": "The browser could not decode the screenshot. Some page content may be unsupported.",
-  "error.captureChanged": "The page moved, resized or navigated during capture. Select the area again.",
-  "error.captureGuestUnavailable": "This Browser tab does not expose screenshot capture. Reopen annotation mode or update Harness.",
-  "error.captureGuestFailed": "The Browser tab could not capture its viewport. Check that it is still open.",
-  "error.guestHint": "Click inside the page content, not on the tab frame",
-  "prompt.head": "Annotations from the app UI ({count}):",
-  "prompt.item": "{index}. {label} \u2014 {comment}",
-  "prompt.where": "   element: {selector}",
-  "meta.title": "Annotate anything",
-  "meta.description": "Point at any part of the interface, comment on it, and send annotated screenshots to the chat."
+  "insert.head": "Red boxes in the screenshots below mark the places to look at; numbers match the comments:",
+  "insert.shot": "Screenshot: {url} (viewport {width}\xD7{height}, scroll {x}, {y})",
+  "insert.item": "{index}. {label} \u2014 {comment}",
+  "insert.noComment": "(no comment)",
+  "insert.where": "   selector: {selector}",
+  "insert.rect": "   rect: x={x}, y={y}, w={width}, h={height}",
+  "insert.regionLabel": "Region",
+  "error.noSession": "Open a chat before inserting annotations",
+  "error.unsupportedApi": "This Harness version does not expose image drafts. Update Harness before inserting.",
+  "error.composerBusy": "The composer is busy; finish or cancel the current send first.",
+  "error.captureFailed": "The screenshot could not be produced. Try again.",
+  "error.captureInvalid": "The viewport is not available. Try again.",
+  "error.captureTooLarge": "This viewport is too large to capture. Resize the window or zoom out.",
+  "error.captureAssets": "A style or image in the page could not be rendered.",
+  "error.captureProtected": "The page contains protected canvas/video pixels that cannot be read.",
+  "error.captureDecode": "The screenshot could not be decoded.",
+  "error.captureChanged": "The page scrolled, resized or navigated during capture. Take the annotation again.",
+  "error.captureGuestUnavailable": "This Browser tab does not expose screenshot capture.",
+  "error.captureGuestFailed": "The Browser tab could not capture its viewport.",
+  "error.guestHint": "Pick inside the page content, not the tab frame",
+  "meta.title": "Annotate viewport",
+  "meta.description": "Take one full screenshot per viewport, mark places with numbered red boxes, and insert them into the composer with your comments."
 };
-var DICT_RU = {
-  "trigger.title": "\u0410\u043D\u043D\u043E\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C",
-  "trigger.titleCount": "\u0410\u043D\u043D\u043E\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u2014 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E {count}",
-  "bar.hint": "\u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043D\u0430 \u044D\u043B\u0435\u043C\u0435\u043D\u0442 \u0438\u043B\u0438 \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u043E\u0431\u043B\u0430\u0441\u0442\u044C \u043F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435\u043C",
-  "region.label": "\u0412\u044B\u0434\u0435\u043B\u0435\u043D\u043D\u0430\u044F \u043E\u0431\u043B\u0430\u0441\u0442\u044C",
-  "bar.capturing": "\u0421\u043D\u0438\u043C\u043E\u043A\u2026",
-  "prompt.region": "   \u041E\u0431\u043B\u0430\u0441\u0442\u044C {surface} (CSS px): x={x}, y={y}, \u0448\u0438\u0440\u0438\u043D\u0430={width}, \u0432\u044B\u0441\u043E\u0442\u0430={height}",
-  "bar.hintDraft": "\u041E\u043F\u0438\u0448\u0438\u0442\u0435, \u0447\u0442\u043E \u0437\u0434\u0435\u0441\u044C \u043D\u0435 \u0442\u0430\u043A",
-  "bar.send": "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C ({count})",
-  "bar.clear": "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C",
-  "bar.sending": "\u041E\u0442\u043F\u0440\u0430\u0432\u043A\u0430\u2026",
-  "bar.close": "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
-  "card.placeholder": "\u0427\u0442\u043E \u0437\u0434\u0435\u0441\u044C \u043F\u043E\u043F\u0440\u0430\u0432\u0438\u0442\u044C?",
-  "card.save": "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C",
-  "card.cancel": "\u041E\u0442\u043C\u0435\u043D\u0430",
-  "card.delete": "\u0423\u0434\u0430\u043B\u0438\u0442\u044C",
-  "pin.empty": "\u0411\u0435\u0437 \u043A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u044F",
-  "pin.edit": "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044E {index}",
-  "error.noSession": "\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0447\u0430\u0442, \u0447\u0442\u043E\u0431\u044B \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u0438",
-  "error.sendFailed": "\u0410\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u0438 \u043D\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u043B\u0438\u0441\u044C",
-  "error.unsupportedApi": "\u042D\u0442\u0430 \u0432\u0435\u0440\u0441\u0438\u044F Harness \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0443 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0439 \u0447\u0435\u0440\u0435\u0437 drafts. \u041E\u0431\u043D\u043E\u0432\u0438\u0442\u0435 Harness.",
-  "error.captureFailed": "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u0430\u0442\u044C \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442. \u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0437\u0430\u043D\u043E\u0432\u043E.",
-  "error.captureInvalid": "\u0412\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u0432\u043D\u0435 \u0432\u0438\u0434\u0438\u043C\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B \u0438\u043B\u0438 \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u0430\u043B\u043E. \u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u043E\u0431\u043B\u0430\u0441\u0442\u044C \u0437\u0430\u043D\u043E\u0432\u043E.",
-  "error.captureTooLarge": "\u0412\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 2,5 \u043C\u0438\u043B\u043B\u0438\u043E\u043D\u0430 CSS-\u043F\u0438\u043A\u0441\u0435\u043B\u0435\u0439. \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0435\u043D\u044C\u0448\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C.",
-  "error.captureAssets": "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u0430\u0442\u044C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 \u0441\u0442\u0438\u043B\u044C \u0432 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0438. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0443 \u0440\u0435\u0441\u0443\u0440\u0441\u043E\u0432 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B.",
-  "error.captureProtected": "\u0412\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u0442 \u0437\u0430\u0449\u0438\u0449\u0451\u043D\u043D\u044B\u0435 \u043F\u0438\u043A\u0441\u0435\u043B\u0438 canvas/\u0432\u0438\u0434\u0435\u043E, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 DOM-\u0437\u0430\u0445\u0432\u0430\u0442 \u043D\u0435 \u043C\u043E\u0436\u0435\u0442 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C.",
-  "error.captureDecode": "\u0411\u0440\u0430\u0443\u0437\u0435\u0440 \u043D\u0435 \u0441\u043C\u043E\u0433 \u0434\u0435\u043A\u043E\u0434\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442. \u0427\u0430\u0441\u0442\u044C \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0433\u043E \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B \u043C\u043E\u0436\u0435\u0442 \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0442\u044C\u0441\u044F.",
-  "error.captureChanged": "\u0412\u043E \u0432\u0440\u0435\u043C\u044F \u0441\u043D\u0438\u043C\u043A\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0430 \u043F\u0440\u043E\u043A\u0440\u0443\u0442\u0438\u043B\u0430\u0441\u044C, \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0440 \u0438\u043B\u0438 \u043F\u0435\u0440\u0435\u0448\u043B\u0430 \u043F\u043E \u0441\u0441\u044B\u043B\u043A\u0435. \u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u043E\u0431\u043B\u0430\u0441\u0442\u044C \u0437\u0430\u043D\u043E\u0432\u043E.",
-  "error.captureGuestUnavailable": "\u042D\u0442\u0430 \u0432\u043A\u043B\u0430\u0434\u043A\u0430 Browser \u043D\u0435 \u043F\u0440\u0435\u0434\u043E\u0441\u0442\u0430\u0432\u043B\u044F\u0435\u0442 API \u0441\u043D\u0438\u043C\u043A\u043E\u0432. \u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0430\u043D\u043D\u043E\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u0437\u0430\u043D\u043E\u0432\u043E \u0438\u043B\u0438 \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0435 Harness.",
-  "error.captureGuestFailed": "\u0412\u043A\u043B\u0430\u0434\u043A\u0430 Browser \u043D\u0435 \u0441\u043C\u043E\u0433\u043B\u0430 \u0441\u043D\u044F\u0442\u044C \u0432\u0438\u0434\u0438\u043C\u0443\u044E \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435, \u0447\u0442\u043E \u043E\u043D\u0430 \u0435\u0449\u0451 \u043E\u0442\u043A\u0440\u044B\u0442\u0430.",
-  "error.guestHint": "\u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043D\u0430 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B, \u0430 \u043D\u0435 \u043D\u0430 \u0440\u0430\u043C\u043A\u0443 \u0432\u043A\u043B\u0430\u0434\u043A\u0438",
-  "prompt.head": "\u0410\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u0438 \u043A \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0443 ({count}):",
-  "prompt.item": "{index}. {label} \u2014 {comment}",
-  "prompt.where": "   \u044D\u043B\u0435\u043C\u0435\u043D\u0442: {selector}",
-  "meta.title": "\u0410\u043D\u043D\u043E\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0447\u0442\u043E \u0443\u0433\u043E\u0434\u043D\u043E",
-  "meta.description": "\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u043B\u044E\u0431\u043E\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442 \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430, \u043E\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u0439 \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442\u044B \u0441 \u043F\u043E\u043C\u0435\u0442\u043A\u0430\u043C\u0438 \u0432 \u0447\u0430\u0442."
+var DICT_ZH = {
+  "trigger.title": "\u6807\u6CE8",
+  "trigger.titleCount": "\u6807\u6CE8 \u2014 \u5DF2\u4FDD\u7559 {count} \u6761",
+  "bar.hint": "\u70B9\u51FB\u5143\u7D20\uFF0C\u6216\u5728\u9875\u9762\u4E0A\u62D6\u51FA\u4E00\u4E2A\u533A\u57DF",
+  "bar.hintDraft": "\u8BF4\u660E\u8FD9\u6761\u6807\u6CE8\u8981\u6539\u4EC0\u4E48",
+  "bar.capturing": "\u6B63\u5728\u622A\u53D6\u6574\u5C4F\u2026",
+  "bar.shots": "\u622A\u56FE\uFF1A{count} \u5F20",
+  "bar.insert": "\u63D2\u5165\u8F93\u5165\u6846\uFF08{count}\uFF09",
+  "bar.inserting": "\u6B63\u5728\u63D2\u5165\u2026",
+  "bar.clear": "\u6E05\u7A7A",
+  "bar.close": "\u5173\u95ED",
+  "region.label": "\u6846\u9009\u533A\u57DF",
+  "card.placeholder": "\u8FD9\u91CC\u6709\u4EC0\u4E48\u95EE\u9898\uFF1F",
+  "card.save": "\u6DFB\u52A0",
+  "card.cancel": "\u53D6\u6D88",
+  "card.delete": "\u5220\u9664",
+  "card.browser": "\u6D4F\u89C8\u5668\u9875\u9762\u5185",
+  "pin.empty": "\u6CA1\u6709\u8BC4\u8BBA",
+  "pin.edit": "\u7F16\u8F91\u7B2C {index} \u6761\u6807\u6CE8",
+  "insert.head": "\u4E0B\u9762\u622A\u56FE\u91CC\u7684\u7EA2\u6846\u6807\u51FA\u4E86\u9700\u8981\u5173\u6CE8\u7684\u4F4D\u7F6E\uFF0C\u7F16\u53F7\u4E0E\u8BC4\u8BBA\u4E00\u4E00\u5BF9\u5E94\uFF1A",
+  "insert.shot": "\u622A\u56FE\uFF1A{url}\uFF08\u89C6\u53E3 {width}\xD7{height}\uFF0C\u6EDA\u52A8 {x}, {y}\uFF09",
+  "insert.item": "{index}. {label} \u2014 {comment}",
+  "insert.noComment": "\uFF08\u65E0\u8BC4\u8BBA\uFF09",
+  "insert.where": "   \u9009\u62E9\u5668\uFF1A{selector}",
+  "insert.rect": "   \u533A\u57DF\uFF1Ax={x}, y={y}, w={width}, h={height}",
+  "insert.regionLabel": "\u6846\u9009\u533A\u57DF",
+  "error.noSession": "\u5148\u6253\u5F00\u4E00\u4E2A\u4F1A\u8BDD\uFF0C\u518D\u63D2\u5165\u6807\u6CE8",
+  "error.unsupportedApi": "\u5F53\u524D Harness \u7248\u672C\u6CA1\u6709\u66B4\u9732\u56FE\u7247\u8349\u7A3F\u63A5\u53E3\uFF0C\u8BF7\u5347\u7EA7\u540E\u518D\u8BD5\u3002",
+  "error.composerBusy": "\u8F93\u5165\u6846\u6B63\u5FD9\uFF0C\u5148\u5B8C\u6210\u6216\u53D6\u6D88\u5F53\u524D\u7684\u53D1\u9001\u3002",
+  "error.captureFailed": "\u622A\u56FE\u751F\u6210\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002",
+  "error.captureInvalid": "\u62FF\u4E0D\u5230\u89C6\u53E3\u4FE1\u606F\uFF0C\u8BF7\u91CD\u8BD5\u3002",
+  "error.captureTooLarge": "\u89C6\u53E3\u592A\u5927\uFF0C\u65E0\u6CD5\u622A\u56FE\u3002\u8BF7\u7F29\u5C0F\u7A97\u53E3\u6216\u964D\u4F4E\u7F29\u653E\u3002",
+  "error.captureAssets": "\u9875\u9762\u91CC\u6709\u6837\u5F0F\u6216\u56FE\u7247\u65E0\u6CD5\u6E32\u67D3\u3002",
+  "error.captureProtected": "\u9875\u9762\u5305\u542B\u65E0\u6CD5\u8BFB\u53D6\u7684\u53D7\u4FDD\u62A4 canvas/\u89C6\u9891\u50CF\u7D20\u3002",
+  "error.captureDecode": "\u622A\u56FE\u89E3\u7801\u5931\u8D25\u3002",
+  "error.captureChanged": "\u622A\u56FE\u671F\u95F4\u9875\u9762\u6EDA\u52A8\u3001\u7F29\u653E\u6216\u8DF3\u8F6C\u4E86\uFF0C\u8BF7\u91CD\u65B0\u6807\u6CE8\u3002",
+  "error.captureGuestUnavailable": "\u8FD9\u4E2A\u6D4F\u89C8\u5668\u6807\u7B7E\u6CA1\u6709\u66B4\u9732\u622A\u56FE\u80FD\u529B\u3002",
+  "error.captureGuestFailed": "\u6D4F\u89C8\u5668\u6807\u7B7E\u622A\u53D6\u89C6\u53E3\u5931\u8D25\u3002",
+  "error.guestHint": "\u8BF7\u5728\u9875\u9762\u5185\u5BB9\u91CC\u9009\u62E9\uFF0C\u4E0D\u8981\u9009\u6807\u7B7E\u8FB9\u6846",
+  "meta.title": "\u6574\u5C4F\u6807\u6CE8",
+  "meta.description": "\u6BCF\u4E2A\u89C6\u53E3\u622A\u4E00\u5F20\u6574\u5C4F\u56FE\uFF0C\u7528\u7F16\u53F7\u7EA2\u6846\u6807\u51FA\u4F4D\u7F6E\uFF0C\u8FDE\u540C\u8BC4\u8BBA\u4E00\u8D77\u63D2\u5165\u8F93\u5165\u6846\u3002"
 };
-module.exports = { name: "dsh-annotate-anything", inject: ["slots", "locale"], apply };
+module.exports = { name: "dsh-annotate-viewport", inject: ["slots", "locale"], apply };
 
 return module.exports;
 } });

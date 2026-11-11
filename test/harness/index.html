@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <title>annotate-viewport harness</title>
+  <style>
+    html, body { margin: 0; padding: 0; font: 14px/1.5 system-ui, sans-serif; background: #fff; color: #111; }
+    #app { padding: 28px 36px; }
+    h1 { font-size: 18px; margin: 0 0 16px; }
+    .panel { width: 520px; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 18px; }
+    .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+    button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #bbb; background: #f6f6f6; cursor: pointer; }
+    input { font: inherit; padding: 6px 8px; border: 1px solid #bbb; border-radius: 6px; width: 220px; }
+    #composer { position: fixed; bottom: 12px; left: 12px; display: flex; align-items: center; gap: 8px; border: 1px solid #ccc; border-radius: 8px; padding: 6px 10px; background: #fafafa; }
+    #draft { width: 260px; height: 34px; }
+    #overlay-root { position: fixed; inset: 0; pointer-events: none; }
+    webview { display: block; width: 620px; height: 380px; margin: 0 36px 24px; background: #eef2f7; border: 1px solid #99a; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>Harness page</h1>
+    <div class="panel" id="panel">
+      <div>Account settings</div>
+      <div class="row"><label for="name">Name</label><input id="name" value="Ada Lovelace"></div>
+      <div class="row">
+        <button id="save">保存</button>
+        <button id="cancel">取消</button>
+      </div>
+    </div>
+    <div class="panel" id="second">
+      <div>Danger zone</div>
+      <div class="row"><button id="delete">删除账号</button></div>
+    </div>
+  </div>
+  <webview id="guest" src="about:blank"></webview>
+  <div id="composer">
+    <div id="composer-left"></div>
+    <textarea id="draft">existing text</textarea>
+  </div>
+  <div id="overlay-root"></div>
+
+  <script src="/loader.js"></script>
+  <script src="/react.js"></script>
+  <script src="/react-dom.js"></script>
+  <script src="/client.js"></script>
+  <script src="/harness.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Annotate anything",
-    "description": "Point at any part of the interface, leave a comment, and send annotated screenshots to the chat."
+    "title": "Annotate viewport",
+    "description": "One full screenshot per viewport, numbered red boxes around the places to fix, inserted into the composer with your comments."
   }
 }

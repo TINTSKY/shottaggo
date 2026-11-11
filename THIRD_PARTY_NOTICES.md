@@ -2,6 +2,8 @@
 
 The generated `client.js` includes html-to-image, distributed under the following license. React is supplied by Harness and is not bundled.
 
+This project is a modified fork of [DSH-AnnotateAnything](https://github.com/Meatware-Engineering/DSH-AnnotateAnything) (MIT, Copyright (c) 2026 Meatware Engineering). The full-window snapshot reconstruction, guest selection script and pointer picker originate there; this fork changes the capture model to full-viewport screenshots with numbered red boxes, inserts drafts into the composer instead of sending, and adds Chinese localization.
+
 ## html-to-image
 
 MIT License

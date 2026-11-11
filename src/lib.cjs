@@ -91,14 +91,39 @@ function dataUrlToBytes(dataUrl) {
   return { mediaType: meta.slice(5).split(';')[0] || 'image/png', bytes };
 }
 
-/** Prompt text listing every annotation; one line per annotation plus its selector. */
-function formatAnnotations(items, t) {
-  const lines = [t('prompt.head', { count: items.length })];
-  items.forEach((item, index) => {
-    const label = item.desc && item.desc.label ? item.desc.label : (item.desc && item.desc.tag) || '';
-    lines.push(t('prompt.item', { index: index + 1, label: label, comment: String(item.comment || '').trim() || '—' }));
-    if (item.kind === 'region' && item.desc && item.desc.rect) lines.push(t('prompt.region', { surface: item.desc.surface, ...item.desc.rect }));
-    if (item.desc && item.desc.selector) lines.push(t('prompt.where', { selector: item.desc.selector, tag: item.desc.tag }));
+/**
+ * Caption that travels with the screenshots into the composer.
+ * One block per screenshot; numbers match the red badges on the image.
+ * groups: [{ index, url, viewport: {width,height}, scroll: {x,y}, items: [...] }]
+ */
+function formatInsertText(groups, t) {
+  const lines = [t('insert.head')];
+  groups.forEach((group) => {
+    const viewport = group.viewport || {};
+    const scroll = group.scroll || { x: 0, y: 0 };
+    lines.push(t('insert.shot', {
+      url: group.url || '',
+      width: Math.round(viewport.width || 0),
+      height: Math.round(viewport.height || 0),
+      x: Math.round(scroll.x || 0),
+      y: Math.round(scroll.y || 0),
+    }));
+    group.items.forEach((item) => {
+      const label = (item.desc && (item.desc.label || item.desc.tag)) || t('insert.regionLabel');
+      lines.push(t('insert.item', {
+        index: item.index,
+        label: clip(label, 80),
+        comment: clip(String(item.comment || '').trim(), 300) || t('insert.noComment'),
+      }));
+      if (item.desc && item.desc.selector) lines.push(t('insert.where', { selector: clip(item.desc.selector, 240) }));
+      const rect = item.rect || {};
+      lines.push(t('insert.rect', {
+        x: Math.round(rect.x || 0),
+        y: Math.round(rect.y || 0),
+        width: Math.round(rect.width || 0),
+        height: Math.round(rect.height || 0),
+      }));
+    });
   });
   return lines.join('\n');
 }
@@ -111,5 +136,5 @@ module.exports = {
   rectOf: rectOf,
   describeElement: describeElement,
   dataUrlToBytes: dataUrlToBytes,
-  formatAnnotations: formatAnnotations,
+  formatInsertText: formatInsertText,
 };

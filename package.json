@@ -1,8 +1,8 @@
 {
-  "name": "dsh-annotate-anything",
-  "version": "0.1.1",
+  "name": "dsh-annotate-viewport",
+  "version": "0.1.0",
   "private": true,
-  "description": "Annotate any part of the Harness UI and send annotated screenshots to the chat.",
+  "description": "Full-viewport screenshots with numbered red boxes, inserted into the Harness composer as image drafts plus comments.",
   "type": "module",
   "main": "index.js",
   "icon": "./icon.svg",
@@ -18,7 +18,8 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
@@ -34,16 +35,13 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test test/*.test.cjs",
+    "test": "node --test test/capture.test.cjs test/lib.test.cjs test/package.test.cjs test/region.test.cjs",
+    "test:harness": "node test/harness/run.cjs",
     "check": "npm run build && npm test && node --check client.js"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
     "html-to-image": "^1.11.13"
   },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Meatware-Engineering/DSH-AnnotateAnything.git"
-  }
+  "license": "MIT"
 }

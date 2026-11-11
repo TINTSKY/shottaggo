@@ -1,21 +1,72 @@
 'use strict';
-const { toPng, toSvg } = require('html-to-image');
-const { clipRect, pixelRect } = require('./region.cjs');
-const MAX_SHOT_AREA = 2500000;
+
+const { toSvg } = require('html-to-image');
+const { clipRect } = require('./region.cjs');
+
+/** Largest viewport we will rasterize before downscaling (4K-ish). */
+const MAX_VIEWPORT_AREA = 9000000;
+/** Longest edge of the PNG we hand to the composer. */
+const MAX_EDGE = 1600;
 const UI = '[data-annot-ui]';
+const BOX_COLOR = '#ff3b30';
 
 class CaptureError extends Error {
-  constructor(code) { super(code); this.code = code; }
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
 }
 
 function captureErrorKey(error) {
-  const keys = { invalid: 'captureInvalid', tooLarge: 'captureTooLarge', assets: 'captureAssets',
-    protected: 'captureProtected', decode: 'captureDecode', changed: 'captureChanged',
-    guestUnavailable: 'captureGuestUnavailable', guest: 'captureGuestFailed' };
-  return 'error.' + (keys[error?.code] || (error?.name === 'SecurityError' ? 'captureProtected' : 'captureFailed'));
+  const keys = {
+    invalid: 'captureInvalid',
+    tooLarge: 'captureTooLarge',
+    assets: 'captureAssets',
+    protected: 'captureProtected',
+    decode: 'captureDecode',
+    changed: 'captureChanged',
+    guestUnavailable: 'captureGuestUnavailable',
+    guest: 'captureGuestFailed',
+  };
+  return 'error.' + (keys[error && error.code] || (error && error.name === 'SecurityError' ? 'captureProtected' : 'captureFailed'));
 }
 
-/** Keep layout placeholders for unrelated subtrees without reading their pixels or resources. */
+function isUiNode(node) {
+  return !!(node && typeof node.closest === 'function' && node.closest(UI));
+}
+
+async function decodeImage(dataUrl) {
+  const image = new Image();
+  image.src = dataUrl;
+  try {
+    await image.decode();
+  } catch (_error) {
+    throw new CaptureError('decode');
+  }
+  if (!image.naturalWidth || !image.naturalHeight) throw new CaptureError('decode');
+  return image;
+}
+
+/** Downscale any raster to MAX_EDGE so one screenshot stays in a sane token budget. */
+async function rasterize(dataUrl) {
+  const image = await decodeImage(dataUrl);
+  const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, width, height);
+  return { dataUrl: canvas.toDataURL('image/png'), width: width, height: height };
+}
+
+/**
+ * Keep layout placeholders for unrelated subtrees without reading their pixels or resources.
+ * Ported from the upstream plugin: it keeps the captured page's geometry intact.
+ */
 function boundedSnapshot(rect) {
   const included = new Set([document.documentElement, document.body]);
   const marker = 'data-annot-layout-' + Math.random().toString(36).slice(2);
@@ -65,37 +116,15 @@ function boundedSnapshot(rect) {
   };
 }
 
-async function cropDataUrl(data, rect, viewport) {
-  const image = new Image();
-  image.src = data;
-  try { await image.decode(); } catch (_) { throw new CaptureError('decode'); }
-  const crop = pixelRect(rect, viewport, { width: image.naturalWidth, height: image.naturalHeight });
-  if (!crop) throw new CaptureError('invalid');
-  const canvas = document.createElement('canvas');
-  const scale = Math.min(1, 1600 / Math.max(crop.width, crop.height));
-  canvas.width = Math.max(1, Math.round(crop.width * scale));
-  canvas.height = Math.max(1, Math.round(crop.height * scale));
-  canvas.getContext('2d').drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/png');
-}
-
-async function captureDom(el) {
-  const rect = el.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) throw new CaptureError('invalid');
-  if (rect.width * rect.height > MAX_SHOT_AREA) throw new CaptureError('tooLarge');
-  const ratio = Math.min(2, Math.max(0.25, 1200 / Math.max(rect.width, rect.height)));
-  try { return await toPng(el, { pixelRatio: ratio, skipFonts: true, cacheBust: false, filter: (node) => !node.matches?.(UI) }); }
-  catch (error) { throw new CaptureError(error?.name === 'SecurityError' ? 'protected' : 'assets'); }
-}
-
-async function captureHostRegion(rect) {
-  const viewport = { width: window.innerWidth, height: window.innerHeight };
-  const box = clipRect(rect, viewport.width, viewport.height, 4);
+/**
+ * Serialize the whole Harness window into an SVG snapshot, reconstructing scroll
+ * offsets and fixed/sticky content that plain DOM cloning loses.
+ */
+async function hostSnapshot(viewport) {
+  const rect = { x: 0, y: 0, width: viewport.width, height: viewport.height };
+  const box = clipRect(rect, viewport.width, viewport.height, 1);
   if (!box) throw new CaptureError('invalid');
-  if (box.width * box.height > MAX_SHOT_AREA) throw new CaptureError('tooLarge');
   const snapshot = boundedSnapshot(box);
-  // SVG serialization does not preserve scroll offsets. Mark only scrolling nodes,
-  // then apply their offsets inside the detached snapshot, never to the live UI.
   const marker = 'data-annot-scroll-' + Math.random().toString(36).slice(2);
   const scrollers = [];
   const positioned = [];
@@ -116,7 +145,7 @@ async function captureHostRegion(rect) {
     data = await toSvg(document.documentElement, { width: viewport.width, height: viewport.height,
       skipFonts: true, cacheBust: false, filter: snapshot.filter });
   } catch (error) {
-    throw new CaptureError(error?.name === 'SecurityError' ? 'protected' : 'assets');
+    throw new CaptureError(error && error.name === 'SecurityError' ? 'protected' : 'assets');
   } finally {
     snapshot.restore();
     scrollers.forEach(({ node }) => node.removeAttribute(marker));
@@ -142,8 +171,6 @@ async function captureHostRegion(rect) {
   for (const [index, entry] of positioned.entries()) {
     const node = svg.querySelector('[' + marker + '-position="' + index + '"]');
     if (!node) continue;
-    // Scrolling wrappers establish containing blocks; keep fixed/sticky content
-    // at its measured viewport location and retain its original layout space.
     const placeholder = node.cloneNode(true);
     placeholder.style.visibility = 'hidden';
     placeholder.removeAttribute(marker + '-position');
@@ -157,37 +184,144 @@ async function captureHostRegion(rect) {
     for (const [key, value] of Object.entries(values)) node.style.setProperty(key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), value, 'important');
     svg.querySelector('foreignObject').firstElementChild.appendChild(node);
   }
-  data = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
-  return cropDataUrl(data, box, viewport);
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
 }
 
-async function captureGuest(wv, rect, expected) {
-  if (!wv || typeof wv.capturePage !== 'function') throw new CaptureError('guestUnavailable');
-  const prepare = `window.__dshAnnotate && window.__dshAnnotate.prepareCapture(${JSON.stringify(expected || null)})`;
+/** Full Harness window, one image per viewport state. */
+async function captureHostViewport() {
+  const viewport = { width: window.innerWidth, height: window.innerHeight, x: window.scrollX, y: window.scrollY };
+  if (!(viewport.width > 0 && viewport.height > 0)) throw new CaptureError('invalid');
+  if (viewport.width * viewport.height > MAX_VIEWPORT_AREA) throw new CaptureError('tooLarge');
+  const svg = await hostSnapshot(viewport);
+  const shot = await rasterize(svg);
+  return { dataUrl: shot.dataUrl, image: { width: shot.width, height: shot.height }, viewport: viewport };
+}
+
+/**
+ * Full viewport of a Browser panel guest. The guest hides its own markers first,
+ * so the base image never contains annotation chrome; boxes are drawn afterwards.
+ */
+async function captureGuestViewport(wv) {
+  if (!wv || typeof wv.capturePage !== 'function' || typeof wv.executeJavaScript !== 'function') {
+    throw new CaptureError('guestUnavailable');
+  }
+  let viewport;
   try {
-    const viewport = await wv.executeJavaScript(prepare);
-    if (!viewport) throw new CaptureError('changed');
-    // A page that scrolled while the shot was prepared still holds the selected
-    // content: shift the crop by the scroll delta instead of failing the shot.
-    const dx = expected && Number.isFinite(expected.x) ? expected.x - viewport.x : 0;
-    const dy = expected && Number.isFinite(expected.y) ? expected.y - viewport.y : 0;
-    const moved = { x: rect.x + dx, y: rect.y + dy, width: rect.width, height: rect.height };
-    const box = clipRect(moved, viewport.width, viewport.height, 2);
-    if (!box) throw new CaptureError('changed');
-    if (box.width * box.height > MAX_SHOT_AREA) throw new CaptureError('tooLarge');
-    // capturePage rectangle units vary with guest zoom; crop the actual raster
-    // against the reported CSS viewport instead of assuming DPR or host offsets.
+    viewport = await wv.executeJavaScript('window.__dshAnnotate && window.__dshAnnotate.prepareCapture()');
+  } catch (_error) {
+    throw new CaptureError('guest');
+  }
+  if (!viewport || !['width', 'height', 'x', 'y'].every((key) => Number.isFinite(viewport[key]))) {
+    throw new CaptureError('changed');
+  }
+  if (viewport.width * viewport.height > MAX_VIEWPORT_AREA) throw new CaptureError('tooLarge');
+  let shot;
+  try {
     const image = await wv.capturePage();
-    const shot = await cropDataUrl(image.toDataURL(), box, viewport);
-    const valid = await wv.executeJavaScript(`window.__dshAnnotate && window.__dshAnnotate.captureValid(${JSON.stringify(viewport)})`);
-    if (!valid) throw new CaptureError('changed');
-    return shot;
+    shot = await rasterize(image.toDataURL());
   } catch (error) {
     if (error instanceof CaptureError) throw error;
     throw new CaptureError('guest');
   } finally {
-    try { await wv.executeJavaScript('window.__dshAnnotate && window.__dshAnnotate.finishCapture()'); } catch (_) {}
+    try {
+      await wv.executeJavaScript('window.__dshAnnotate && window.__dshAnnotate.finishCapture()');
+    } catch (_error) {
+      /* the guest may be gone; the capture result still stands */
+    }
   }
+  let valid = false;
+  try {
+    valid = await wv.executeJavaScript(
+      'window.__dshAnnotate && window.__dshAnnotate.captureValid(' + JSON.stringify(viewport) + ')',
+    );
+  } catch (_error) {
+    valid = false;
+  }
+  if (!valid) throw new CaptureError('changed');
+  return { dataUrl: shot.dataUrl, image: { width: shot.width, height: shot.height }, viewport: viewport };
 }
 
-module.exports = { CaptureError, captureErrorKey, cropDataUrl, captureDom, captureHostRegion, captureGuest };
+function roundedRect(context, x, y, width, height, radius) {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  context.beginPath();
+  if (typeof context.roundRect === 'function') {
+    context.roundRect(x, y, width, height, r);
+    return;
+  }
+  context.moveTo(x + r, y);
+  context.lineTo(x + width - r, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + r);
+  context.lineTo(x + width, y + height - r);
+  context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  context.lineTo(x + r, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - r);
+  context.lineTo(x, y + r);
+  context.quadraticCurveTo(x, y, x + r, y);
+  context.closePath();
+}
+
+/**
+ * Draw the numbered boxes over one base screenshot.
+ * Rects are CSS pixels in the base's viewport; the image may be downscaled.
+ */
+async function drawAnnotations(base, items, color) {
+  const image = await decodeImage(base.dataUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext('2d');
+  if (!context) throw new CaptureError('decode');
+  context.drawImage(image, 0, 0);
+  const viewport = base.viewport || { width: canvas.width, height: canvas.height };
+  const sx = canvas.width / viewport.width;
+  const sy = canvas.height / viewport.height;
+  const stroke = Math.max(2, Math.round(2.5 * Math.max(sx, sy)));
+  const halo = Math.max(1, Math.round(stroke * 0.6));
+  const radius = Math.max(2, Math.round(4 * Math.max(sx, sy)));
+  const accent = color || BOX_COLOR;
+  const badgeRadius = Math.max(10, Math.round(11 * Math.max(sx, sy)));
+  for (const item of items) {
+    const box = clipRect(item.rect, viewport.width, viewport.height, 2);
+    if (!box) continue;
+    const x = box.x * sx;
+    const y = box.y * sy;
+    const width = Math.max(1, box.width * sx);
+    const height = Math.max(1, box.height * sy);
+    // White halo keeps the red frame visible on red/dark content.
+    roundedRect(context, x - halo, y - halo, width + halo * 2, height + halo * 2, radius + halo);
+    context.lineWidth = stroke + halo * 2;
+    context.strokeStyle = 'rgba(255,255,255,0.92)';
+    context.stroke();
+    roundedRect(context, x, y, width, height, radius);
+    context.lineWidth = stroke;
+    context.strokeStyle = accent;
+    context.stroke();
+    // Number badge, centred on the top-left corner but kept inside the image.
+    const cx = Math.min(Math.max(badgeRadius, x), Math.max(badgeRadius, canvas.width - badgeRadius));
+    const cy = Math.min(Math.max(badgeRadius, y), Math.max(badgeRadius, canvas.height - badgeRadius));
+    context.beginPath();
+    context.arc(cx, cy, badgeRadius, 0, Math.PI * 2);
+    context.fillStyle = accent;
+    context.fill();
+    context.lineWidth = Math.max(1, Math.round(badgeRadius * 0.18));
+    context.strokeStyle = 'rgba(255,255,255,0.95)';
+    context.stroke();
+    context.fillStyle = '#ffffff';
+    context.font = '600 ' + Math.round(badgeRadius * 1.05) + 'px "Segoe UI", system-ui, -apple-system, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(String(item.index), cx, cy + Math.round(badgeRadius * 0.05));
+  }
+  return canvas.toDataURL('image/png');
+}
+
+module.exports = {
+  CaptureError,
+  captureErrorKey,
+  rasterize,
+  captureHostViewport,
+  captureGuestViewport,
+  drawAnnotations,
+  BOX_COLOR,
+  MAX_EDGE,
+};

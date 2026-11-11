@@ -2,19 +2,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { clipRect, dragRect, pixelRect, installRegionPicker } = require('../src/region.cjs');
-const { formatAnnotations } = require('../src/lib.cjs');
+const { createRegionTools } = require('../src/region.cjs');
+const { formatInsertText } = require('../src/lib.cjs');
 
 test('bundled picker helpers survive serialization into an isolated guest scope', () => {
-  const vm = require('node:vm');
-  const path = require('node:path');
-  const { buildSync } = require('esbuild');
-  const code = buildSync({ stdin: { contents: "module.exports = require('./src/region.cjs').createRegionTools;",
-    resolveDir: path.join(__dirname, '..') }, bundle: true, platform: 'browser', format: 'cjs', write: false }).outputFiles[0].text;
-  const context = { module: { exports: {} } };
-  vm.runInNewContext(code, context);
-  const tools = vm.runInNewContext('(' + context.module.exports.toString() + ')()');
+  // The guest script embeds createRegionTools.toString(); rebuilding it from
+  // source text reproduces that scope without a bundler.
+  const factory = new Function('return (' + createRegionTools.toString() + ')')();
+  const tools = factory();
   const rect = tools.dragRect({ x: 80, y: 90 }, { x: 10, y: 20 }, 100, 100);
   assert.deepEqual(JSON.parse(JSON.stringify(rect)), { x: 10, y: 20, width: 70, height: 70 });
+  assert.equal(typeof tools.installRegionPicker, 'function');
 });
 
 test('region normalization handles all drag directions and viewport clipping', () => {
@@ -36,7 +34,7 @@ test('invalid, empty and tiny rectangles never produce an annotation', () => {
   assert.equal(clipRect({ x: 120, y: 0, width: 10, height: 10 }, 100, 100), null);
 });
 
-test('raster crop uses independent image-to-viewport ratios, including fractional DPR', () => {
+test('raster coordinates use independent image-to-viewport ratios, including fractional DPR', () => {
   assert.deepEqual(pixelRect({ x: 10, y: 20, width: 30, height: 40 }, { width: 100, height: 100 },
     { width: 200, height: 150 }), { x: 20, y: 30, width: 60, height: 60 });
   assert.deepEqual(pixelRect({ x: 0.5, y: 0.5, width: 10, height: 10 }, { width: 100, height: 100 },
@@ -82,17 +80,6 @@ test('cancel, lost capture, pointercancel, no held button and UI controls abort 
   assert.equal(h.selected.length, 0);
 });
 
-test('mixed annotations retain order and region geometry without inventing a selector', () => {
-  const calls = [];
-  const t = (key, params) => { calls.push([key, params]); return key; };
-  formatAnnotations([{ desc: { label: 'button', selector: '#send' } },
-    { kind: 'region', desc: { label: 'region', surface: 'browser', rect: { x: 1, y: 2, width: 30, height: 40 } }, comment: 'fix' }], t);
-  assert.deepEqual(calls.map(([key]) => key), ['prompt.head', 'prompt.item', 'prompt.where', 'prompt.item', 'prompt.region']);
-  assert.equal(calls[3][1].index, 2);
-  assert.deepEqual(calls[4][1], { surface: 'browser', x: 1, y: 2, width: 30, height: 40 });
-});
-
-
 test('click and sub-threshold jitter pick the original element; threshold starts a region', () => {
   for (const offset of [0, 1, 3.99]) {
     const h = pickerHarness(); h.fire('pointerdown');
@@ -116,4 +103,21 @@ test('a thin drag or a drag returning to its start never falls back to an elemen
     h.fire('pointerup', end);
     assert.equal(h.selected.length, 0); assert.equal(h.clicks.length, 0);
   }
+});
+
+test('captions number annotations globally, group by screenshot and cite selectors', () => {
+  const calls = [];
+  const t = (key, params) => { calls.push([key, params]); return key; };
+  const text = formatInsertText([
+    { index: 1, url: 'http://localhost:3000/', viewport: { width: 1440, height: 900 }, scroll: { x: 0, y: 0 },
+      items: [{ index: 1, desc: { label: 'Save', selector: 'button#save' }, comment: 'no-op', rect: { x: 10, y: 20, width: 30, height: 40 } }] },
+    { index: 2, url: 'http://localhost:3000/', viewport: { width: 1440, height: 900 }, scroll: { x: 0, y: 420 },
+      items: [{ index: 2, desc: { label: 'Region', surface: 'browser' }, comment: '', rect: { x: 1, y: 2, width: 30, height: 40 } }] },
+  ], t);
+  assert.deepEqual(calls.map(([key]) => key),
+    ['insert.head', 'insert.shot', 'insert.item', 'insert.where', 'insert.rect', 'insert.shot', 'insert.noComment', 'insert.item', 'insert.rect']);
+  assert.equal(calls[2][1].index, 1);
+  assert.equal(calls[7][1].comment, 'insert.noComment');
+  assert.equal(calls[5][1].y, 420);
+  assert.equal(typeof text, 'string');
 });

@@ -49,26 +49,22 @@ test('dataUrlToBytes decodes a tiny png payload', () => {
   assert.throws(() => lib.dataUrlToBytes('data:image/png,raw'));
 });
 
-test('formatAnnotations lists every annotation with its selector', () => {
-  const t = (key, params) =>
-    key === 'prompt.head'
-      ? `Annotations (${params.count}):`
-      : key === 'prompt.item'
-        ? `${params.index}. ${params.label} — ${params.comment}`
-        : `   element: ${params.selector}`;
-  const text = lib.formatAnnotations(
-    [
-      { desc: { tag: 'button', label: 'Send', selector: 'button.send' }, comment: 'too small' },
-      { desc: { tag: 'div', label: '', selector: 'div#chat' }, comment: '' },
-    ],
-    t,
-  );
-  assert.equal(text, 'Annotations (2):\n1. Send — too small\n   element: button.send\n2. div — —\n   element: div#chat');
-});
-
 test('guest scripts parse and carry the console marker', () => {
   assert.equal(typeof guest.GUEST_INSTALL, 'string');
   assert.ok(guest.GUEST_INSTALL.includes(guest.MARK));
+  assert.ok(guest.GUEST_INSTALL.includes('__BOX__'));
   assert.doesNotThrow(() => new Function(guest.GUEST_INSTALL));
   assert.doesNotThrow(() => new Function(guest.GUEST_REMOVE));
+  assert.doesNotThrow(() => new Function(guest.GUEST_FREEZE));
+  assert.doesNotThrow(() => new Function(guest.GUEST_RESUME));
+});
+
+test('guest install script accepts the box color substitution used by the client', () => {
+  const filled = guest.GUEST_INSTALL
+    .split('__BOX__').join('#ff3b30')
+    .split('__ACCENT__').join('#3b82f6')
+    .split('__ON_ACCENT__').join('#ffffff');
+  assert.ok(filled.includes('#ff3b30'));
+  assert.ok(!filled.includes('__BOX__'));
+  assert.doesNotThrow(() => new Function(filled));
 });
