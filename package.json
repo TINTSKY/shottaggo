@@ -2,7 +2,7 @@
   "name": "dsh-annotate-viewport",
   "version": "0.1.0",
   "private": true,
-  "description": "Full-viewport screenshots with numbered red boxes, inserted into the Harness composer as image drafts plus comments.",
+  "description": "Full-viewport screenshots with numbered red boxes and comments, inserted into the Harness composer as image drafts.",
   "type": "module",
   "main": "index.js",
   "icon": "./icon.svg",

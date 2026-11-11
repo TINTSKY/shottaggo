@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Northwind — Team</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --blue: #2f6feb;
+      --blue-dark: #245fd6;
+      --green: #0f9f6e;
+      --amber: #d97706;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+    aside {
+      background: #0f172a;
+      color: #cbd5e1;
+      padding: 22px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 26px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 650; font-size: 15px; letter-spacing: .2px; }
+    .brand__mark {
+      width: 30px; height: 30px; border-radius: 9px;
+      background: linear-gradient(135deg, #5b9bff, #2f6feb 55%, #1c4fd0);
+      box-shadow: 0 6px 16px rgba(47, 111, 235, .35);
+      display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 14px;
+    }
+    nav { display: flex; flex-direction: column; gap: 4px; }
+    nav a {
+      display: flex; align-items: center; gap: 10px;
+      color: #94a3b8; text-decoration: none;
+      padding: 9px 10px; border-radius: 8px; font-weight: 500;
+    }
+    nav a.active { background: rgba(91, 155, 255, .14); color: #fff; }
+    nav a.active::before { content: ""; width: 3px; height: 16px; border-radius: 2px; background: #5b9bff; margin-left: -10px; }
+    .aside-foot { margin-top: auto; display: flex; align-items: center; gap: 10px; padding-top: 18px; border-top: 1px solid rgba(148, 163, 184, .18); }
+    .avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, #fbbf24, #f97316);
+      color: #fff; font-weight: 700; font-size: 12px;
+    }
+    .aside-foot b { color: #e2e8f0; font-weight: 600; font-size: 12.5px; display: block; }
+    .aside-foot span { color: #64748b; font-size: 11.5px; }
+    main { padding: 34px 44px 48px; max-width: 1180px; }
+    .crumb { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
+    .crumb b { color: #334155; font-weight: 600; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+    h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -.4px; }
+    .sub { margin: 0; color: var(--muted); }
+    .actions { display: flex; align-items: center; gap: 10px; }
+    .search {
+      display: flex; align-items: center; gap: 8px;
+      height: 38px; width: 250px; padding: 0 12px;
+      background: #fff; border: 1px solid var(--line); border-radius: 9px;
+      color: #94a3b8; box-shadow: 0 1px 2px rgba(15, 23, 42, .03);
+    }
+    .search input { border: 0; outline: 0; width: 100%; font: inherit; color: var(--ink); background: transparent; }
+    .btn {
+      height: 38px; padding: 0 16px; border-radius: 9px; border: 1px solid transparent;
+      background: var(--blue); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+      box-shadow: 0 6px 16px rgba(47, 111, 235, .22);
+    }
+    .btn:hover { background: var(--blue-dark); }
+    .btn--ghost { background: #fff; color: #334155; border-color: var(--line); box-shadow: none; font-weight: 500; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .chips { display: flex; gap: 8px; }
+    .chip { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: #475569; font-size: 12.5px; }
+    .chip.active { background: #eef4ff; border-color: #c7d9ff; color: var(--blue); font-weight: 600; }
+    .count { color: var(--muted); font-size: 12.5px; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; align-items: start; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(15, 23, 42, .05); }
+    .table { width: 100%; border-collapse: collapse; }
+    .table th {
+      text-align: left; font-size: 11.5px; letter-spacing: .6px; text-transform: uppercase;
+      color: #94a3b8; font-weight: 600; padding: 14px 20px; border-bottom: 1px solid var(--line);
+    }
+    .table td { padding: 15px 20px; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
+    .table tr:last-child td { border-bottom: 0; }
+    .person { display: flex; align-items: center; gap: 12px; }
+    .person b { display: block; font-weight: 600; font-size: 13.5px; }
+    .person span { color: var(--muted); font-size: 12px; }
+    .avatar--blue { background: linear-gradient(135deg, #60a5fa, #2f6feb); }
+    .avatar--green { background: linear-gradient(135deg, #34d399, #0f9f6e); }
+    .avatar--pink { background: linear-gradient(135deg, #f472b6, #db2777); }
+    .avatar--slate { background: linear-gradient(135deg, #94a3b8, #475569); }
+    .role { color: #334155; font-weight: 500; }
+    .status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; }
+    .dot.on { background: var(--green); box-shadow: 0 0 0 3px rgba(15, 159, 110, .12); }
+    .side { display: flex; flex-direction: column; gap: 18px; }
+    .side .card { padding: 18px; }
+    .side h3 { margin: 0 0 4px; font-size: 14px; }
+    .side p { margin: 0; color: var(--muted); font-size: 12.5px; }
+    .invite { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #eef2f7; }
+    .invite:last-of-type { border-bottom: 0; }
+    .invite .avatar { width: 28px; height: 28px; font-size: 11px; }
+    .invite b { display: block; font-size: 12.5px; font-weight: 600; }
+    .invite span { color: var(--muted); font-size: 11.5px; }
+    .invite .tag { margin-left: auto; font-size: 11px; color: var(--amber); background: #fff7ed; border: 1px solid #fed7aa; padding: 2px 8px; border-radius: 999px; }
+    .seat { margin-top: 14px; padding: 12px; border-radius: 10px; background: #f8fafc; border: 1px dashed #dbe3ef; color: var(--muted); font-size: 12px; }
+    .seat b { color: #334155; }
+    .lower { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; margin-top: 22px; }
+    .lower .card { padding: 18px 20px; }
+    .lower h3 { margin: 0 0 4px; font-size: 14px; }
+    .lower p { margin: 0; color: var(--muted); font-size: 12.5px; }
+    .feed { margin-top: 14px; display: flex; flex-direction: column; }
+    .feed__row { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef2f7; align-items: flex-start; }
+    .feed__row:last-child { border-bottom: 0; }
+    .feed__row b { font-weight: 600; }
+    .feed__row span { color: var(--muted); font-size: 12px; }
+    .feed__time { margin-left: auto; color: #94a3b8; font-size: 11.5px; white-space: nowrap; }
+    .role-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid #eef2f7; }
+    .role-row:last-child { border-bottom: 0; }
+    .role-row b { font-size: 12.5px; display: block; }
+    .role-row span { color: var(--muted); font-size: 11.5px; }
+    .pill { font-size: 11px; color: #475569; background: #f1f5f9; border-radius: 999px; padding: 2px 9px; }
+    @media (max-width: 1080px) { .grid { grid-template-columns: 1fr; } main { padding: 28px; } .lower { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="brand"><span class="brand__mark">N</span> Northwind</div>
+      <nav>
+        <a href="#">Overview</a>
+        <a href="#">Projects</a>
+        <a href="#" class="active">Team</a>
+        <a href="#">Reports</a>
+        <a href="#">Settings</a>
+      </nav>
+      <div class="aside-foot">
+        <span class="avatar">AM</span>
+        <div><b>Ada Moreau</b><span>Workspace admin</span></div>
+      </div>
+    </aside>
+    <main>
+      <div class="crumb">Workspace / <b>Team</b></div>
+      <header>
+        <div>
+          <h1>Team members</h1>
+          <p class="sub">Manage who can view, edit, and ship work in this workspace.</p>
+        </div>
+        <div class="actions">
+          <label class="search">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.6"/><path d="m10.6 10.6 3 3"/></svg>
+            <input placeholder="Search by name or email">
+          </label>
+          <button class="btn" id="invite">Invite people</button>
+        </div>
+      </header>
+      <div class="toolbar">
+        <div class="chips">
+          <span class="chip active">All members</span>
+          <span class="chip">Editors</span>
+          <span class="chip">Viewers</span>
+          <span class="chip">Pending</span>
+        </div>
+        <span class="count">8 members · 2 pending invites</span>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <table class="table">
+            <thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Last active</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="person"><span class="avatar avatar--blue">JL</span><div><b>Jonas Lindqvist</b><span>jonas@northwind.io</span></div></div></td>
+                <td class="role">Admin</td>
+                <td><span class="status"><i class="dot on"></i>Online</span></td>
+                <td>Just now</td>
+              </tr>
+              <tr>
+                <td><div class="person"><span class="avatar avatar--green">MP</span><div><b>Maya Patel</b><span>maya@northwind.io</span></div></div></td>
+                <td class="role">Editor</td>
+                <td><span class="status"><i class="dot on"></i>Online</span></td>
+                <td>12 min ago</td>
+              </tr>
+              <tr>
+                <td><div class="person"><span class="avatar avatar--pink">RK</span><div><b>Rina Kobayashi</b><span>rina@northwind.io</span></div></div></td>
+                <td class="role">Editor</td>
+                <td><span class="status"><i class="dot"></i>Away</span></td>
+                <td>1 h ago</td>
+              </tr>
+              <tr>
+                <td><div class="person"><span class="avatar avatar--slate">TB</span><div><b>Tom Becker</b><span>tom@northwind.io</span></div></div></td>
+                <td class="role">Viewer</td>
+                <td><span class="status"><i class="dot"></i>Offline</span></td>
+                <td>Yesterday</td>
+              </tr>
+              <tr>
+                <td><div class="person"><span class="avatar avatar--blue">SC</span><div><b>Sofia Costa</b><span>sofia@northwind.io</span></div></div></td>
+                <td class="role">Editor</td>
+                <td><span class="status"><i class="dot"></i>Offline</span></td>
+                <td>2 days ago</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="side">
+          <div class="card">
+            <h3>Pending invites</h3>
+            <p>Sent in the last 7 days</p>
+            <div class="invite"><span class="avatar avatar--green">DK</span><div><b>Daniel Kim</b><span>daniel@northwind.io</span></div><span class="tag">Viewer</span></div>
+            <div class="invite"><span class="avatar avatar--pink">LN</span><div><b>Lena Nowak</b><span>lena@northwind.io</span></div><span class="tag">Editor</span></div>
+            <div class="seat">Seats used <b>8 / 12</b> · 4 remaining on the Team plan.</div>
+          </div>
+          <div class="card">
+            <h3>Access policy</h3>
+            <p>Members can invite editors. Admins approve viewer access.</p>
+            <div style="display:flex; gap:8px; margin-top:14px;">
+              <button class="btn btn--ghost" style="flex:1">Manage policy</button>
+              <button class="btn" style="flex:1">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="lower">
+        <div class="card">
+          <h3>Recent activity</h3>
+          <p>What changed in this workspace over the last few days.</p>
+          <div class="feed">
+            <div class="feed__row"><span class="avatar avatar--green">MP</span><div><b>Maya Patel</b> updated the <b>Q3 launch plan</b><br><span>Moved 4 milestones to review</span></div><span class="feed__time">12 min ago</span></div>
+            <div class="feed__row"><span class="avatar avatar--blue">JL</span><div><b>Jonas Lindqvist</b> invited <b>Daniel Kim</b><br><span>Viewer access · pending acceptance</span></div><span class="feed__time">1 h ago</span></div>
+            <div class="feed__row"><span class="avatar avatar--pink">RK</span><div><b>Rina Kobayashi</b> commented on <b>Onboarding flow</b><br><span>“Let’s ship the empty state first.”</span></div><span class="feed__time">3 h ago</span></div>
+            <div class="feed__row"><span class="avatar avatar--slate">TB</span><div><b>Tom Becker</b> changed the workspace role policy<br><span>Editors can no longer invite admins</span></div><span class="feed__time">Yesterday</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Roles &amp; permissions</h3>
+          <p>Three roles are available on the Team plan.</p>
+          <div class="role-row"><div><b>Admin</b><span>Full workspace control</span></div><span class="pill">2 people</span></div>
+          <div class="role-row"><div><b>Editor</b><span>Create and edit work</span></div><span class="pill">5 people</span></div>
+          <div class="role-row"><div><b>Viewer</b><span>Read-only access</span></div><span class="pill">1 person</span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

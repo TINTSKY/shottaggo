@@ -1,101 +1,92 @@
-# dsh-annotate-viewport
+# 整屏标注
 
-给 DeepSeek Harness 的**整屏标注**插件：每个视口截一张完整截图，用带编号的红色框标出要评论的位置，最后把截图（红框已烘焙进 PNG）和评论一起插入当前会话的输入框草稿。
+**圈出界面上的问题，整屏截图和编号评论一起进入输入框。**
 
-这是 [DSH-AnnotateAnything](https://github.com/Meatware-Engineering/DSH-AnnotateAnything) 的 fork（MIT）。上游是"只截选中区域"，本 fork 改成"整屏底图 + 红框"，因为裁剪掉上下文后，模型很容易理解偏。
+`DeepSeek Harness 0.2.2` · `Desktop 优先` · `MIT`
 
-![Harness 界面标注示例](docs/example-host.png)
+![在 Browser 面板里标注](docs/hero.png)
 
-![Browser 页面标注示例](docs/example-guest.png)
+## 为什么是整屏，而不是裁剪
 
-上面两张图是 `test/harness` 在真实 Chromium 里跑出来的产物：整屏截图 + 红框 + 全局编号，编号与插入输入框的文字编号一致。
+只发一小块裁剪图，模型看不到它在页面里的位置：不知道这个按钮在卡片右上角，也不知道它上面还有一行标题。截图一裁，上下文就断了。
 
-## 和上游的区别
+这个插件把**整个视口**作为底图，再用红框和编号指出要评论的位置。模型看到的是一张完整的页面，加上“第 1 处是什么、评论是什么”。
 
-| | 上游 | 本插件 |
-|---|---|---|
-| 截图 | 每条标注裁一小块 | 每个视口状态一张完整截图 |
-| 标注 | 图里没有框，靠文字描述坐标 | 红框 + 编号直接画进 PNG |
-| 编号 | 按裁图顺序 | 全局编号，跨多张截图连续 |
-| 输出 | 直接 `sendSession` 发送 | 插入输入框草稿，可继续编辑、自己按发送 |
-| 语言 | 英/俄 | 中/英 |
+## 能做什么
 
-## 行为
+- **整屏底图**：每个视口状态（滚动位置 + 尺寸）截一张完整图；滚动后继续标注，会生成第二张。
+- **红框直接画进 PNG**：红色描边 + 白色光晕 + 编号徽标，不是叠在界面上的临时高亮。
+- **编号与评论一一对应**：一次插入多张截图时，编号在当前批次内连续，正文按截图分组。
+- **进草稿，不直接发**：截图变成图片附件，评论追加到草稿，原来打的字保留；可以继续改，再自己按发送。
+- **全屏 Browser 也能用**：右下角常驻「标注」胶囊，窗口被全屏页面盖住时依然可点。
+- **中英双语**：跟随 Harness 的界面语言。
 
-1. 点输入框左侧的**标注**按钮，或窗口**右下角的「标注」胶囊**进入标注模式（浏览器面板全屏时也能用）。
-2. 点击页面元素，或按住拖出一个区域；每处会生成一条标注。
-3. 在卡片里写评论，点**添加**（或 Ctrl/Cmd+Enter）。评论框是非受控输入，截图也在**添加之后**才开始，所以打字不会被截图阻塞。
-4. 滚动页面再标注时，会为新的视口状态再截一张图；每条标注归属于它被创建时的那张截图。
-5. 点**插入输入框**：每张截图生成一个 PNG 附件，评论按编号写成一段文字，追加到当前草稿；已有草稿文字保留，随后焦点移到输入框。编号**每次插入都从 1 开始**。
+![红框与评论卡片](docs/detail.png)
 
-插入目标是**主界面当前打开的会话**，不是 Browser 面板碰巧所属的会话——Browser 标签可能在别的、保活中的会话里；把鼠标停在「插入输入框」上会显示实际目标会话标题。UI 操作按钮用蓝色，截图里的红框/编号用红色；按钮悬停时保持蓝底白字。
+## 用起来
 
-标注层通过 `ReactDOM.createPortal` 挂到 `document.body`，因此层级高于右侧 Sidebar 的全屏面板；截图里的红框是最终 PNG 的一部分，不是 UI 控件；编号与文字里的编号一一对应。
+1. 在 Harness 里打开要标注的页面（Browser 面板），或直接对着 Harness 界面。
+2. 点输入框左侧的标注图标，或右下角的「标注」胶囊。
+3. 点击一个元素，或按住拖出一个区域；在卡片里写评论，点**添加**（Ctrl/Cmd+Enter）。
+4. 可以继续滚动、继续标注，再点**插入输入框**。
 
-## 安装（Desktop）
+插入目标是**主界面当前打开的会话**。Browser 标签可能来自别的保活会话，所以不能按页面所属会话猜；把鼠标停在插入按钮上会显示实际目标会话标题。
 
-前置：通过 **设置 → 账号 → Manage dsh Command…** 安装 Desktop 自带的 `dsh` 命令。npm 全局安装的 `dsh` 不能管理 Desktop profile。
+## 安装
+
+先在 **设置 → 账号 → Manage dsh Command…** 装好 Desktop 自带的 `dsh`，然后完全退出 Desktop：
 
 ```sh
-# 1. 先完全退出 Desktop（关窗口不算）
-# 2. 把本目录作为链接安装进 desktop profile
-dsh plugin --profile desktop add "link:C:\Users\YuanBo\Documents\deepseek-harness\default-workspace\annotate-viewport"
-# 3. 重新打开 Desktop，到「插件」页确认 dsh-annotate-viewport 已启用
+dsh plugin --profile desktop add "link:C:\path\to\annotate-viewport"
 ```
 
-本地开发时，改完源码后：
+重新打开 Desktop，到「插件」页确认 `dsh-annotate-viewport` 已启用。本仓库已经提交构建产物 `client.js`，安装时不需要构建。
+
+## 边界
+
+- 截的是**当前视口**，不是整篇文档；超长页面请按屏标注。
+- Web profile 的 Browser 是跨域 iframe，读不到 DOM 也拿不到像素；整屏标注只在 Desktop 的 `<webview>` 上可用。
+- 页面在截图期间滚动、缩放或跳转时，这一张会作废并提示重选，避免把框画到错误内容上。
+- 标注截图会作为附件发给模型，注意不要框选密码、令牌等敏感内容。
+
+## 实现
+
+| 能力 | 用到的接口 |
+| --- | --- |
+| 输入框入口 | `conversation.input.left` |
+| 全窗浮层 | `shell.overlay` + `createPortal(document.body)` |
+| 插入草稿 | `conversation.createDrafts()` → `shell.addAttachments()` → `shell.setDraft()` |
+| Browser 选择 | `webview.executeJavaScript()` 注入选择脚本 |
+| Browser 截图 | `webview.capturePage()` + Canvas 合成红框 |
+
+这些是 Harness 的客户端内部接口，已在 0.2.2-rc.1 上做过端到端验证。
+
+## 开发
 
 ```sh
-npm ci          # 只需一次
-npm run build   # 产出 client.js
+npm ci
+npm run build          # 产出 client.js
+npm test               # 几何 / 选择器 / 文案 / guest 脚本
 ```
 
-然后重启 Desktop（或等 HMR 重载，取决于 profile 的 HMR 设置）。
-
-> 安装第三方插件等于在 profile 里运行完整权限的客户端代码。装之前请自己读一遍 `src/`；不要在不信任的会话里截取包含密钥的页面。
-
-## 使用范围与限制
-
-- **Desktop 的 Browser 面板**：可用。插件会找到面板里的 Electron `<webview>`，把选择脚本注入 guest 页面，再用 `webview.capturePage()` 拿真实像素。要求该 webview 暴露 `executeJavaScript` 和 `capturePage`。
-- **Harness 自己的界面**（会话、工具卡片、设置页）：可用。整窗 DOM 快照 + html-to-image 重建；`canvas`、视频、跨域图片、特殊 CSS 可能失真。
-- **Web profile 里的 Browser 标签**：不可用。跨域 iframe 读不到 DOM 也拿不到像素；这是安全边界，不是插件缺陷。
-- 截图是**当前视口**，不是整篇文档。滚动后标注会生成第二张截图；超长页面建议按屏标注。
-- 一条标注不能同时跨 Harness 界面和 Browser 页面；请在各自表面内选择。
-- 页面滚动/跳转/缩放期间截图会失败并提示重选，避免把框画到错误内容上。
-- 每张图最长边压到 1600px；视口超过 900 万 CSS 像素直接拒绝。
-- 截图会连同页面内容发给模型，注意隐私。
-
-## 实现要点（DSH 0.2.2-rc.1 验证）
-
-- `conversation.input.left`：输入框左侧的触发按钮。
-- `shell.overlay`：全窗口标注层。
-- `ctx.conversation.createDrafts(sessionId, files, uploadImages)`：把 PNG 变成图片草稿。
-- `shell.addAttachments(ids)` + `shell.setDraft(text)`：附件与评论进入输入框。
-- Browser 面板：`webview.executeJavaScript()` 注入选择脚本；`webview.capturePage()` 取整屏；guest 通过 `console.log('__DSH_ANNOTATE__' + json)` 回传选择结果。
-
-这些是客户端内部 API，DSH 升级后可能变化；插件在 0.2.2-rc.1 上做了端到端验证。
-
-## 测试
+可选的浏览器冒烟测试（需要本机 Edge）：
 
 ```sh
-npm run build
-npm test          # 单元测试：几何、选择器、提示词格式、guest 脚本
-# 可选：用本机 Edge 无头跑真实 DOM 冒烟
 npm install --prefix ../test-tools --no-save react@18.3.1 react-dom@18.3.1
 npm run test:harness
 ```
 
-`test:harness` 会启动无头 Edge，加载构建后的 `client.js`，用 mock 的 Harness ctx 跑通两条路径（Harness 界面 + 模拟 Browser guest），并解码生成的 PNG 检查红框像素。它需要本机安装 Edge；可用 `EDGE` 环境变量覆盖路径。
+`test:harness` 用真实 React 挂载插件，驱动两条路径（Harness 界面 + 模拟 Browser guest），并解码生成的 PNG 检查红框像素。
 
-## 目录
+重新生成 README 截图：
 
-- `src/client.cjs`：Overlay、状态（bases/items）、插入输入框。
-- `src/capture.cjs`：整窗 DOM 快照、guest 整屏截图、红框合成。
-- `src/guest.cjs`：注入 Browser guest 的选择脚本。
-- `src/region.cjs`：指针选择几何（host 与 guest 共用）。
-- `src/lib.cjs`：元素描述、选择器、caption 文本。
-- `build.mjs`：esbuild 打包成 `window.__ModuleLoader__` 可加载的 `client.js`。
+```sh
+node docs/serve-demo.cjs     # http://127.0.0.1:8899/
+# 在 Browser 面板打开该地址，标注「Invite people」，截图后裁到 docs/hero.png
+```
 
-## 许可与归属
+## 与上游的关系
 
-MIT。原始实现 © 2026 Meatware Engineering（DSH-AnnotateAnything）；本 fork 的修改 © 2026 annotate-viewport contributors。`client.js` 内含 html-to-image（MIT，见 `THIRD_PARTY_NOTICES.md`）。
+本插件是 [DSH-AnnotateAnything](https://github.com/Meatware-Engineering/DSH-AnnotateAnything)（MIT）的 fork。沿用其窗口快照、guest 注入与指针选择实现；上游按“选中区域裁剪”输出，本 fork 改为整屏底图 + 编号红框 + 插入草稿，并补充了全屏入口、目标会话解析、中文本地化与无障碍回归测试。
+
+MIT License。原始实现 © 2026 Meatware Engineering；修改部分 © 2026 annotate-viewport contributors。

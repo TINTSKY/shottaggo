@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Annotate viewport",
-    "description": "One full screenshot per viewport, numbered red boxes around the places to fix, inserted into the composer with your comments."
+    "title": "Viewport Annotate",
+    "description": "Full-viewport screenshots with numbered red boxes and comments, inserted into the composer instead of being sent."
   }
 }
