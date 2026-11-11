@@ -208,6 +208,7 @@ function fail(message, details) {
     const hostState = await cdp.evaluate('__HARNESS.snapshot()');
     const hostImages = await cdp.evaluate('__HARNESS.measure()');
     if (hostState.added.length !== 1) fail('host insert should attach one screenshot', hostState);
+    if (hostState.shellSessionId !== 'session-main') fail('insert should target the main-view chat, not the browser pane', hostState);
     if (!/existing text/.test(hostState.draftText)) fail('typed draft text was not preserved', hostState.draftText);
     if (!/这个按钮点下去没反应/.test(hostState.draftText)) fail('comment missing from caption', hostState.draftText);
     if (!hostImages[0] || hostImages[0].type !== 'image/png' || hostImages[0].width < 100) fail('host screenshot is not a PNG', hostImages);

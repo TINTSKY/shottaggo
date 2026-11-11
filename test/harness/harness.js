@@ -53,7 +53,12 @@
   const drafts = [];
   let draftSeq = 0;
   const conversation = {
-    input: { shell: () => shell },
+    input: {
+      shell: (sessionId) => {
+        H.shellSessionId = sessionId;
+        return shell;
+      },
+    },
     createDrafts(sessionId, files, uploadImages) {
       const created = files.map((file) => ({ id: 'draft-' + ++draftSeq, file }));
       for (const entry of created) {
@@ -67,7 +72,11 @@
 
   const sessions = {
     binding: () => ({ session: { getSnapshot: () => ({ subagent: null }) } }),
+    list: { getSnapshot: () => ({ byId: { 'session-main': { title: 'Main working chat' } } }) },
   };
+  // The main view points at another Session than the mounted test composer; the
+  // insertion target must follow the main view, not the browser pane.
+  const uiSession = { current: { getSnapshot: () => ({ sessionId: 'session-main' }) } };
 
   const registrations = [];
   const ctx = {
@@ -92,6 +101,7 @@
     get(name) {
       if (name === 'conversation') return conversation;
       if (name === 'sessions') return sessions;
+      if (name === 'uiSession') return uiSession;
       return undefined;
     },
   };
@@ -166,6 +176,7 @@
     added: shell.added.slice(),
     drafts: drafts.map(({ file, ...rest }) => rest),
     draftText: H.draftText || '',
+    shellSessionId: H.shellSessionId || '',
     errors: H.errors.slice(),
   });
 

@@ -3119,22 +3119,24 @@ var { MARK, GUEST_INSTALL, GUEST_REMOVE, GUEST_FREEZE, GUEST_RESUME } = require_
 var NS = "annotateViewport";
 var UI = "[data-annot-ui]";
 var BOX = "#ff3b30";
+var ACTION = "#2f6feb";
+var ACTION_HOVER = "#245fd6";
 var CSS2 = `
 .dsh-annot-trigger{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none}
-.dsh-annot-trigger__badge{position:absolute;top:-2px;right:-3px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:${BOX};color:#fff;font:600 9px/13px system-ui,sans-serif;text-align:center}
+.dsh-annot-trigger__badge{position:absolute;top:-2px;right:-3px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:${ACTION};color:#fff;font:600 9px/13px system-ui,sans-serif;text-align:center}
 .dsh-annot-trigger:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
-.dsh-annot-trigger--active{background:color-mix(in srgb,${BOX} 16%,transparent);color:${BOX}}
+.dsh-annot-trigger--active{background:color-mix(in srgb,${ACTION} 16%,transparent);color:${ACTION}}
 .dsh-annot-layer{position:fixed;inset:0;z-index:9000;pointer-events:none}
 .dsh-annot-bar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.4 system-ui,-apple-system,sans-serif;pointer-events:auto;max-width:min(820px,94vw)}
 .dsh-annot-bar__hint{color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
-.dsh-annot-bar__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${BOX};color:#fff;font-weight:600}
+.dsh-annot-bar__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${ACTION};color:#fff;font-weight:600}
 .dsh-annot-chip{appearance:none;min-width:22px;height:22px;padding:0 6px;border:1px solid ${BOX};background:color-mix(in srgb,${BOX} 12%,transparent);color:${BOX};border-radius:11px;font:600 11px/1 system-ui,sans-serif;cursor:pointer}
 .dsh-annot-chip:hover{background:color-mix(in srgb,${BOX} 22%,transparent)}
 .dsh-annot-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:7px;padding:4px 10px;font:12px/1.3 inherit;cursor:pointer;white-space:nowrap}
 .dsh-annot-btn:hover:enabled{background:var(--dsw-alias-bg-layer-2)}
 .dsh-annot-btn:disabled{opacity:.5;cursor:default}
-.dsh-annot-btn--primary{border-color:transparent;background:${BOX};color:#fff}
-.dsh-annot-btn--primary:hover:enabled{filter:brightness(1.06)}
+.dsh-annot-btn--primary{border-color:transparent;background:${ACTION};color:#fff}
+.dsh-annot-btn--primary:hover:enabled{background:${ACTION_HOVER};filter:none}
 .dsh-annot-btn--danger{color:var(--dsw-alias-state-error-primary)}
 .dsh-annot-hover{position:fixed;pointer-events:none;border:2px solid var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,transparent);border-radius:3px;box-sizing:border-box}
 .dsh-annot-hover__tag{position:fixed;pointer-events:none;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 6px;border-radius:4px;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary));color:var(--dsw-alias-label-primary-foreground,#fff);font:11px/1.5 system-ui,-apple-system,sans-serif}
@@ -3143,13 +3145,13 @@ var CSS2 = `
 .dsh-annot-card{position:fixed;width:320px;pointer-events:auto;padding:10px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 10px 30px rgba(0,0,0,.22);font:12px/1.45 system-ui,-apple-system,sans-serif}
 .dsh-annot-card__title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-annot-card__input{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;padding:6px 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit}
-.dsh-annot-card__input:focus{outline:2px solid ${BOX};outline-offset:0}
+.dsh-annot-card__input:focus{outline:2px solid ${ACTION};outline-offset:0}
 .dsh-annot-card__where{color:var(--dsw-alias-label-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-annot-card__rows{display:flex;gap:6px;justify-content:flex-end}
 .dsh-annot-error{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);pointer-events:none;max-width:80vw;padding:6px 12px;border-radius:8px;background:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary-foreground,#fff);font:12px/1.4 system-ui,-apple-system,sans-serif;z-index:9001}
 .dsh-annot-fab{position:fixed;right:18px;bottom:18px;z-index:9000;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:16px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 4px 16px rgba(0,0,0,.18);font:12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;pointer-events:auto;opacity:.94}
 .dsh-annot-fab:hover{opacity:1;background:var(--dsw-alias-bg-layer-1)}
-.dsh-annot-fab__icon{color:${BOX};display:inline-flex}
+.dsh-annot-fab__icon{color:${ACTION};display:inline-flex}
 `;
 var ICON = React.createElement(
   "svg",
@@ -3348,6 +3350,17 @@ function Overlay({ ctx, store, t }) {
   const removeItem = (id) => {
     setItems((prev) => prev.filter((entry) => entry.id !== id));
     setDraft(null);
+  };
+  const targetTitle = () => {
+    try {
+      const id = activeSessionId(ctx, state);
+      const sessions = ctx.get("sessions");
+      const byId = sessions && sessions.list ? sessions.list.getSnapshot().byId : void 0;
+      const entry = byId && id ? byId[id] : void 0;
+      return entry && (entry.title || entry.name) || t("bar.currentChat");
+    } catch (_error) {
+      return t("bar.currentChat");
+    }
   };
   React.useEffect(() => {
     store.set({ count: items.length });
@@ -3684,11 +3697,11 @@ function Overlay({ ctx, store, t }) {
     try {
       const conversation = ctx.get("conversation");
       const sessions = ctx.get("sessions");
-      const sessionId = sessionIdFromDom() || state.sessionId;
+      const sessionId = activeSessionId(ctx, state);
       const session = sessionId && sessions ? (sessions.binding(sessionId) || {}).session : void 0;
       if (!conversation || !session || !sessionId) throw new Error(t("error.noSession"));
       const shell = conversation.input && conversation.input.shell ? conversation.input.shell(sessionId) : null;
-      if (!shell || typeof shell.addAttachments !== "function") throw new Error(t("error.unsupportedApi"));
+      if (!shell || typeof shell.addAttachments !== "function") throw new Error(t("error.noComposer"));
       if (shell.snapshot && ["adjudicating", "submitting", "sending"].includes(shell.snapshot.phase)) {
         throw new Error(t("error.composerBusy"));
       }
@@ -3756,7 +3769,7 @@ function Overlay({ ctx, store, t }) {
             className: "dsh-annot-fab",
             title: t("fab.title"),
             onClick: () => {
-              const sessionId = state.sessionId || sessionIdFromDom();
+              const sessionId = activeSessionId(ctx, state);
               if (sessionId && sessionId !== state.sessionId) store.set({ sessionId });
               store.set({ active: true });
             }
@@ -3801,7 +3814,13 @@ function Overlay({ ctx, store, t }) {
       items.length > 0 ? React.createElement("button", { key: "clear", className: "dsh-annot-btn dsh-annot-btn--danger", onClick: () => clearAll(false) }, t("bar.clear")) : null,
       React.createElement(
         "button",
-        { key: "insert", className: "dsh-annot-btn dsh-annot-btn--primary", disabled: items.length === 0 || busy || !!draft, onClick: insert },
+        {
+          key: "insert",
+          className: "dsh-annot-btn dsh-annot-btn--primary",
+          disabled: items.length === 0 || busy || !!draft,
+          title: t("bar.insertTarget", { title: targetTitle() }),
+          onClick: insert
+        },
         busy ? t("bar.inserting") : t("bar.insert", { count: items.length })
       ),
       React.createElement("button", { key: "close", className: "dsh-annot-btn", onClick: () => {
@@ -3937,13 +3956,34 @@ function safeGuestUrl(wv) {
 }
 function sessionIdFromDom() {
   try {
-    const frame = document.querySelector("webview[data-sidebar-browser-frame]");
-    const host = frame && frame.closest("[data-sidebar-right-session]");
-    const id = host && host.getAttribute("data-sidebar-right-session");
-    return id || void 0;
+    const frames = Array.from(document.querySelectorAll("webview[data-sidebar-browser-frame]"));
+    for (const frame of frames) {
+      const rect = frame.getBoundingClientRect();
+      if (rect.width < 4 || rect.height < 4) continue;
+      if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= window.innerWidth || rect.top >= window.innerHeight) continue;
+      const host = frame.closest("[data-sidebar-right-session]");
+      const id = host && host.getAttribute("data-sidebar-right-session");
+      if (id) return id;
+    }
   } catch (_error) {
-    return void 0;
   }
+  return void 0;
+}
+function activeSessionId(ctx, state) {
+  try {
+    const uiSession = ctx.get("uiSession");
+    const current = uiSession && uiSession.current && uiSession.current.getSnapshot ? uiSession.current.getSnapshot() : void 0;
+    if (current && current.sessionId) return current.sessionId;
+  } catch (_error) {
+  }
+  try {
+    const right = ctx.get("sidebarRight");
+    const mounted = right && right.mounted && right.mounted.getSnapshot();
+    if (mounted) return mounted;
+  } catch (_error) {
+  }
+  if (state && state.sessionId) return state.sessionId;
+  return sessionIdFromDom();
 }
 function guestInstallScript() {
   const root = getComputedStyle(document.documentElement);
@@ -3997,6 +4037,8 @@ var DICT_EN = {
   "bar.shots": "screenshots: {count}",
   "bar.insert": "Insert {count} into input",
   "bar.inserting": "Inserting\u2026",
+  "bar.insertTarget": "Insert into: {title}",
+  "bar.currentChat": "current chat",
   "bar.clear": "Clear",
   "bar.close": "Close",
   "region.label": "Selected region",
@@ -4015,6 +4057,7 @@ var DICT_EN = {
   "insert.rect": "   rect: x={x}, y={y}, w={width}, h={height}",
   "insert.regionLabel": "Region",
   "error.noSession": "Open a chat before inserting annotations",
+  "error.noComposer": "The target chat has no composer available. Open that chat and try again.",
   "error.unsupportedApi": "This Harness version does not expose image drafts. Update Harness before inserting.",
   "error.composerBusy": "The composer is busy; finish or cancel the current send first.",
   "error.captureFailed": "The screenshot could not be produced. Try again.",
@@ -4041,6 +4084,8 @@ var DICT_ZH = {
   "bar.shots": "\u622A\u56FE\uFF1A{count} \u5F20",
   "bar.insert": "\u63D2\u5165\u8F93\u5165\u6846\uFF08{count}\uFF09",
   "bar.inserting": "\u6B63\u5728\u63D2\u5165\u2026",
+  "bar.insertTarget": "\u63D2\u5165\u5230\uFF1A{title}",
+  "bar.currentChat": "\u5F53\u524D\u4F1A\u8BDD",
   "bar.clear": "\u6E05\u7A7A",
   "bar.close": "\u5173\u95ED",
   "region.label": "\u6846\u9009\u533A\u57DF",
@@ -4059,6 +4104,7 @@ var DICT_ZH = {
   "insert.rect": "   \u533A\u57DF\uFF1Ax={x}, y={y}, w={width}, h={height}",
   "insert.regionLabel": "\u6846\u9009\u533A\u57DF",
   "error.noSession": "\u5148\u6253\u5F00\u4E00\u4E2A\u4F1A\u8BDD\uFF0C\u518D\u63D2\u5165\u6807\u6CE8",
+  "error.noComposer": "\u76EE\u6807\u4F1A\u8BDD\u7684\u8F93\u5165\u6846\u4E0D\u53EF\u7528\uFF0C\u8BF7\u5148\u6253\u5F00\u8BE5\u4F1A\u8BDD\u518D\u63D2\u5165\u3002",
   "error.unsupportedApi": "\u5F53\u524D Harness \u7248\u672C\u6CA1\u6709\u66B4\u9732\u56FE\u7247\u8349\u7A3F\u63A5\u53E3\uFF0C\u8BF7\u5347\u7EA7\u540E\u518D\u8BD5\u3002",
   "error.composerBusy": "\u8F93\u5165\u6846\u6B63\u5FD9\uFF0C\u5148\u5B8C\u6210\u6216\u53D6\u6D88\u5F53\u524D\u7684\u53D1\u9001\u3002",
   "error.captureFailed": "\u622A\u56FE\u751F\u6210\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002",

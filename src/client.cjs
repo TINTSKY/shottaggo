@@ -16,23 +16,25 @@ const { MARK, GUEST_INSTALL, GUEST_REMOVE, GUEST_FREEZE, GUEST_RESUME } = requir
 const NS = 'annotateViewport';
 const UI = '[data-annot-ui]';
 const BOX = '#ff3b30';
+const ACTION = '#2f6feb';
+const ACTION_HOVER = '#245fd6';
 
 const CSS = `
 .dsh-annot-trigger{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;flex:none}
-.dsh-annot-trigger__badge{position:absolute;top:-2px;right:-3px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:${BOX};color:#fff;font:600 9px/13px system-ui,sans-serif;text-align:center}
+.dsh-annot-trigger__badge{position:absolute;top:-2px;right:-3px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:${ACTION};color:#fff;font:600 9px/13px system-ui,sans-serif;text-align:center}
 .dsh-annot-trigger:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
-.dsh-annot-trigger--active{background:color-mix(in srgb,${BOX} 16%,transparent);color:${BOX}}
+.dsh-annot-trigger--active{background:color-mix(in srgb,${ACTION} 16%,transparent);color:${ACTION}}
 .dsh-annot-layer{position:fixed;inset:0;z-index:9000;pointer-events:none}
 .dsh-annot-bar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.4 system-ui,-apple-system,sans-serif;pointer-events:auto;max-width:min(820px,94vw)}
 .dsh-annot-bar__hint{color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
-.dsh-annot-bar__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${BOX};color:#fff;font-weight:600}
+.dsh-annot-bar__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${ACTION};color:#fff;font-weight:600}
 .dsh-annot-chip{appearance:none;min-width:22px;height:22px;padding:0 6px;border:1px solid ${BOX};background:color-mix(in srgb,${BOX} 12%,transparent);color:${BOX};border-radius:11px;font:600 11px/1 system-ui,sans-serif;cursor:pointer}
 .dsh-annot-chip:hover{background:color-mix(in srgb,${BOX} 22%,transparent)}
 .dsh-annot-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:7px;padding:4px 10px;font:12px/1.3 inherit;cursor:pointer;white-space:nowrap}
 .dsh-annot-btn:hover:enabled{background:var(--dsw-alias-bg-layer-2)}
 .dsh-annot-btn:disabled{opacity:.5;cursor:default}
-.dsh-annot-btn--primary{border-color:transparent;background:${BOX};color:#fff}
-.dsh-annot-btn--primary:hover:enabled{filter:brightness(1.06)}
+.dsh-annot-btn--primary{border-color:transparent;background:${ACTION};color:#fff}
+.dsh-annot-btn--primary:hover:enabled{background:${ACTION_HOVER};filter:none}
 .dsh-annot-btn--danger{color:var(--dsw-alias-state-error-primary)}
 .dsh-annot-hover{position:fixed;pointer-events:none;border:2px solid var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,transparent);border-radius:3px;box-sizing:border-box}
 .dsh-annot-hover__tag{position:fixed;pointer-events:none;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 6px;border-radius:4px;background:var(--dsw-alias-button-primary-fill,var(--dsw-alias-brand-primary));color:var(--dsw-alias-label-primary-foreground,#fff);font:11px/1.5 system-ui,-apple-system,sans-serif}
@@ -41,13 +43,13 @@ const CSS = `
 .dsh-annot-card{position:fixed;width:320px;pointer-events:auto;padding:10px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 10px 30px rgba(0,0,0,.22);font:12px/1.45 system-ui,-apple-system,sans-serif}
 .dsh-annot-card__title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-annot-card__input{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;padding:6px 8px;border-radius:7px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit}
-.dsh-annot-card__input:focus{outline:2px solid ${BOX};outline-offset:0}
+.dsh-annot-card__input:focus{outline:2px solid ${ACTION};outline-offset:0}
 .dsh-annot-card__where{color:var(--dsw-alias-label-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-annot-card__rows{display:flex;gap:6px;justify-content:flex-end}
 .dsh-annot-error{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);pointer-events:none;max-width:80vw;padding:6px 12px;border-radius:8px;background:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary-foreground,#fff);font:12px/1.4 system-ui,-apple-system,sans-serif;z-index:9001}
 .dsh-annot-fab{position:fixed;right:18px;bottom:18px;z-index:9000;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:16px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 4px 16px rgba(0,0,0,.18);font:12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;pointer-events:auto;opacity:.94}
 .dsh-annot-fab:hover{opacity:1;background:var(--dsw-alias-bg-layer-1)}
-.dsh-annot-fab__icon{color:${BOX};display:inline-flex}
+.dsh-annot-fab__icon{color:${ACTION};display:inline-flex}
 `;
 
 const ICON = React.createElement(
@@ -273,6 +275,19 @@ function Overlay({ ctx, store, t }) {
   const removeItem = (id) => {
     setItems((prev) => prev.filter((entry) => entry.id !== id));
     setDraft(null);
+  };
+
+  /** Human-readable target shown on the insert button. */
+  const targetTitle = () => {
+    try {
+      const id = activeSessionId(ctx, state);
+      const sessions = ctx.get('sessions');
+      const byId = sessions && sessions.list ? sessions.list.getSnapshot().byId : undefined;
+      const entry = byId && id ? byId[id] : undefined;
+      return (entry && (entry.title || entry.name)) || t('bar.currentChat');
+    } catch (_error) {
+      return t('bar.currentChat');
+    }
   };
 
   React.useEffect(() => {
@@ -640,14 +655,11 @@ function Overlay({ ctx, store, t }) {
     try {
       const conversation = ctx.get('conversation');
       const sessions = ctx.get('sessions');
-      // The composer's session is normally published by the Trigger. In a
-      // fullscreen Browser pane the conversation is covered, so fall back to
-      // the session that owns the visible webview.
-      const sessionId = sessionIdFromDom() || state.sessionId;
+      const sessionId = activeSessionId(ctx, state);
       const session = sessionId && sessions ? (sessions.binding(sessionId) || {}).session : undefined;
       if (!conversation || !session || !sessionId) throw new Error(t('error.noSession'));
       const shell = conversation.input && conversation.input.shell ? conversation.input.shell(sessionId) : null;
-      if (!shell || typeof shell.addAttachments !== 'function') throw new Error(t('error.unsupportedApi'));
+      if (!shell || typeof shell.addAttachments !== 'function') throw new Error(t('error.noComposer'));
       if (shell.snapshot && ['adjudicating', 'submitting', 'sending'].includes(shell.snapshot.phase)) {
         throw new Error(t('error.composerBusy'));
       }
@@ -719,7 +731,7 @@ function Overlay({ ctx, store, t }) {
             className: 'dsh-annot-fab',
             title: t('fab.title'),
             onClick: () => {
-              const sessionId = state.sessionId || sessionIdFromDom();
+              const sessionId = activeSessionId(ctx, state);
               if (sessionId && sessionId !== state.sessionId) store.set({ sessionId: sessionId });
               store.set({ active: true });
             },
@@ -773,7 +785,13 @@ function Overlay({ ctx, store, t }) {
         : null,
       React.createElement(
         'button',
-        { key: 'insert', className: 'dsh-annot-btn dsh-annot-btn--primary', disabled: items.length === 0 || busy || !!draft, onClick: insert },
+        {
+          key: 'insert',
+          className: 'dsh-annot-btn dsh-annot-btn--primary',
+          disabled: items.length === 0 || busy || !!draft,
+          title: t('bar.insertTarget', { title: targetTitle() }),
+          onClick: insert,
+        },
         busy ? t('bar.inserting') : t('bar.insert', { count: items.length }),
       ),
       React.createElement('button', { key: 'close', className: 'dsh-annot-btn', onClick: () => { setDraft(null); store.set({ active: false }); } }, t('bar.close')),
@@ -923,13 +941,46 @@ function safeGuestUrl(wv) {
 /** Session that owns the visible Browser pane, including a fullscreen one. */
 function sessionIdFromDom() {
   try {
-    const frame = document.querySelector('webview[data-sidebar-browser-frame]');
-    const host = frame && frame.closest('[data-sidebar-right-session]');
-    const id = host && host.getAttribute('data-sidebar-right-session');
-    return id || undefined;
+    const frames = Array.from(document.querySelectorAll('webview[data-sidebar-browser-frame]'));
+    for (const frame of frames) {
+      const rect = frame.getBoundingClientRect();
+      if (rect.width < 4 || rect.height < 4) continue;
+      if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= window.innerWidth || rect.top >= window.innerHeight) continue;
+      const host = frame.closest('[data-sidebar-right-session]');
+      const id = host && host.getAttribute('data-sidebar-right-session');
+      if (id) return id;
+    }
   } catch (_error) {
-    return undefined;
+    /* ignore */
   }
+  return undefined;
+}
+
+/**
+ * Where the annotation should go: the chat that is currently in the main view.
+ * The browser pane can belong to another, kept-alive session, so it is only
+ * the last resort — otherwise a comment would land in a thread the user is
+ * not working in.
+ */
+function activeSessionId(ctx, state) {
+  try {
+    const uiSession = ctx.get('uiSession');
+    const current = uiSession && uiSession.current && uiSession.current.getSnapshot
+      ? uiSession.current.getSnapshot()
+      : undefined;
+    if (current && current.sessionId) return current.sessionId;
+  } catch (_error) {
+    /* service unavailable */
+  }
+  try {
+    const right = ctx.get('sidebarRight');
+    const mounted = right && right.mounted && right.mounted.getSnapshot();
+    if (mounted) return mounted;
+  } catch (_error) {
+    /* service unavailable */
+  }
+  if (state && state.sessionId) return state.sessionId;
+  return sessionIdFromDom();
 }
 
 function guestInstallScript() {
@@ -986,6 +1037,8 @@ const DICT_EN = {
   'bar.shots': 'screenshots: {count}',
   'bar.insert': 'Insert {count} into input',
   'bar.inserting': 'Inserting…',
+  'bar.insertTarget': 'Insert into: {title}',
+  'bar.currentChat': 'current chat',
   'bar.clear': 'Clear',
   'bar.close': 'Close',
   'region.label': 'Selected region',
@@ -1004,6 +1057,7 @@ const DICT_EN = {
   'insert.rect': '   rect: x={x}, y={y}, w={width}, h={height}',
   'insert.regionLabel': 'Region',
   'error.noSession': 'Open a chat before inserting annotations',
+  'error.noComposer': 'The target chat has no composer available. Open that chat and try again.',
   'error.unsupportedApi': 'This Harness version does not expose image drafts. Update Harness before inserting.',
   'error.composerBusy': 'The composer is busy; finish or cancel the current send first.',
   'error.captureFailed': 'The screenshot could not be produced. Try again.',
@@ -1031,6 +1085,8 @@ const DICT_ZH = {
   'bar.shots': '截图：{count} 张',
   'bar.insert': '插入输入框（{count}）',
   'bar.inserting': '正在插入…',
+  'bar.insertTarget': '插入到：{title}',
+  'bar.currentChat': '当前会话',
   'bar.clear': '清空',
   'bar.close': '关闭',
   'region.label': '框选区域',
@@ -1049,6 +1105,7 @@ const DICT_ZH = {
   'insert.rect': '   区域：x={x}, y={y}, w={width}, h={height}',
   'insert.regionLabel': '框选区域',
   'error.noSession': '先打开一个会话，再插入标注',
+  'error.noComposer': '目标会话的输入框不可用，请先打开该会话再插入。',
   'error.unsupportedApi': '当前 Harness 版本没有暴露图片草稿接口，请升级后再试。',
   'error.composerBusy': '输入框正忙，先完成或取消当前的发送。',
   'error.captureFailed': '截图生成失败，请重试。',
