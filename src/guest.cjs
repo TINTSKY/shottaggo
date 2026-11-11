@@ -225,7 +225,6 @@ const GUEST_INSTALL = `(function () {
   var monitorFrame = 0;
   function monitor() {
     monitorFrame = requestAnimationFrame(monitor);
-    if (picks.length) reportMoves();
     paintMarkers();
   }
   function reportScroll() {
@@ -237,7 +236,6 @@ const GUEST_INSTALL = `(function () {
     scrollFrame = requestAnimationFrame(function () {
       scrollFrame = 0;
       try { console.log(MARK + JSON.stringify({ kind: 'scroll', width: innerWidth, height: innerHeight, x: window.scrollX, y: window.scrollY, revision: revision })); } catch (error) {}
-      reportMoves();
     });
   }
   window.addEventListener('scroll', reportScroll, true);

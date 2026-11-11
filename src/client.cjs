@@ -130,6 +130,7 @@ function Overlay({ ctx, store, t }) {
   const guestsRef = React.useRef([]);
   const captureChainsRef = React.useRef(new Map());
   const pickerRef = React.useRef(null);
+  const commentRef = React.useRef(null);
   const seqRef = React.useRef(0);
   const sessionRef = React.useRef(undefined);
   const busyRef = React.useRef(false);
@@ -241,11 +242,12 @@ function Overlay({ ctx, store, t }) {
   };
 
   const addItem = (surface, wv, st, rect, desc, guestId) => {
-    const base = ensureBase(surface, wv, st);
+    const state = Object.assign({}, st);
     const item = {
       id: 'a' + Math.random().toString(36).slice(2),
       index: ++seqRef.current,
-      key: base.key,
+      key: boxKey(surface, state),
+      state: state,
       surface: surface,
       wv: wv || null,
       guestId: guestId || null,
@@ -275,6 +277,23 @@ function Overlay({ ctx, store, t }) {
   const removeItem = (id) => {
     setItems((prev) => prev.filter((entry) => entry.id !== id));
     setDraft(null);
+  };
+
+  /**
+   * The comment box is uncontrolled: reading it on Add keeps keystrokes out of
+   * React state, so typing never re-renders the overlay (or pokes the guest).
+   */
+  const saveComment = () => {
+    const current = draftRef.current;
+    if (!current) return;
+    const area = commentRef.current;
+    const comment = area ? area.value : current.comment || '';
+    const item = itemsRef.current.find((entry) => entry.id === current.itemId);
+    setItems((prev) => prev.map((entry) => (entry.id === current.itemId ? Object.assign({}, entry, { comment: comment }) : entry)));
+    setDraft(null);
+    // The screenshot starts only after the comment is committed: rasterizing a
+    // full viewport inside the keystroke path made typing feel delayed.
+    if (item && item.state && !basesRef.current.has(item.key)) ensureBase(item.surface, item.wv, item.state);
   };
 
   /** Human-readable target shown on the insert button. */
@@ -498,8 +517,11 @@ function Overlay({ ctx, store, t }) {
     install();
     const poll = setInterval(() => {
       install();
+      // No marker sync while the user is typing a comment: that is the moment
+      // where cross-process executeJavaScript calls are most noticeable.
+      if (draftRef.current) return;
       for (const pair of guests) adoptInto(pair[0]);
-    }, 150);
+    }, 200);
 
     return () => {
       clearInterval(poll);
@@ -668,8 +690,12 @@ function Overlay({ ctx, store, t }) {
       const keys = [];
       for (const item of ordered) if (!keys.includes(item.key)) keys.push(item.key);
       for (const key of keys) {
-        const base = basesRef.current.get(key);
-        if (!base) throw new Error(t('error.captureFailed'));
+        let base = basesRef.current.get(key);
+        if (!base) {
+          const item = ordered.find((entry) => entry.key === key);
+          if (!item) throw new Error(t('error.captureFailed'));
+          base = ensureBase(item.surface, item.wv, item.state);
+        }
         if (base.ready) await base.ready;
         if (!base.dataUrl) throw new Error(t(base.errorKey || 'error.captureFailed'));
       }
@@ -709,7 +735,12 @@ function Overlay({ ctx, store, t }) {
       );
       const typed = String((shell.snapshot && shell.snapshot.draft) || '');
       shell.setDraft(typed.trim() ? typed.replace(/\s+$/, '') + '\n\n' + text : text);
-      clearAll();
+      try {
+        if (typeof shell.focus === 'function') shell.focus();
+      } catch (_error) {
+        /* the composer may refuse focus; the draft is already inserted */
+      }
+      clearAll(true);
       store.set({ active: false });
     } catch (failure) {
       setError(failure instanceof CaptureError ? t(captureErrorKey(failure)) : String((failure && failure.message) || failure));
@@ -781,7 +812,7 @@ function Overlay({ ctx, store, t }) {
           ),
         ),
       items.length > 0
-        ? React.createElement('button', { key: 'clear', className: 'dsh-annot-btn dsh-annot-btn--danger', onClick: () => clearAll(false) }, t('bar.clear'))
+        ? React.createElement('button', { key: 'clear', className: 'dsh-annot-btn dsh-annot-btn--danger', onClick: () => clearAll(true) }, t('bar.clear'))
         : null,
       React.createElement(
         'button',
@@ -876,13 +907,21 @@ function Overlay({ ctx, store, t }) {
         'div',
         { key: 'card', 'data-annot-ui': 'card', className: 'dsh-annot-card', style: { left: left, top: top } },
         React.createElement('div', { className: 'dsh-annot-card__title' }, clip(label, 70)),
-        React.createElement('textarea', {
+          React.createElement('textarea', {
+          key: draft.itemId,
           className: 'dsh-annot-card__input',
+          ref: commentRef,
           autoFocus: true,
           rows: 3,
           placeholder: t('card.placeholder'),
-          value: draft.comment,
-          onChange: (event) => setDraft(Object.assign({}, draftRef.current, { comment: event.target.value })),
+          defaultValue: draft.comment,
+          onKeyDown: (event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+              event.preventDefault();
+              event.stopPropagation();
+              saveComment();
+            }
+          },
         }),
         React.createElement('div', { className: 'dsh-annot-card__where' }, where),
         React.createElement(
@@ -908,12 +947,7 @@ function Overlay({ ctx, store, t }) {
             {
               key: 'save',
               className: 'dsh-annot-btn dsh-annot-btn--primary',
-              onClick: () => {
-                const current = draftRef.current;
-                if (!current) return;
-                setItems((prev) => prev.map((entry) => (entry.id === current.itemId ? Object.assign({}, entry, { comment: current.comment }) : entry)));
-                setDraft(null);
-              },
+              onClick: saveComment,
             },
             t('card.save'),
           ),

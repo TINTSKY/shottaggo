@@ -2930,7 +2930,6 @@ var require_guest = __commonJS({
   var monitorFrame = 0;
   function monitor() {
     monitorFrame = requestAnimationFrame(monitor);
-    if (picks.length) reportMoves();
     paintMarkers();
   }
   function reportScroll() {
@@ -2942,7 +2941,6 @@ var require_guest = __commonJS({
     scrollFrame = requestAnimationFrame(function () {
       scrollFrame = 0;
       try { console.log(MARK + JSON.stringify({ kind: 'scroll', width: innerWidth, height: innerHeight, x: window.scrollX, y: window.scrollY, revision: revision })); } catch (error) {}
-      reportMoves();
     });
   }
   window.addEventListener('scroll', reportScroll, true);
@@ -3224,6 +3222,7 @@ function Overlay({ ctx, store, t }) {
   const guestsRef = React.useRef([]);
   const captureChainsRef = React.useRef(/* @__PURE__ */ new Map());
   const pickerRef = React.useRef(null);
+  const commentRef = React.useRef(null);
   const seqRef = React.useRef(0);
   const sessionRef = React.useRef(void 0);
   const busyRef = React.useRef(false);
@@ -3319,11 +3318,12 @@ function Overlay({ ctx, store, t }) {
     return base;
   };
   const addItem = (surface, wv, st, rect, desc, guestId) => {
-    const base = ensureBase(surface, wv, st);
+    const state2 = Object.assign({}, st);
     const item = {
       id: "a" + Math.random().toString(36).slice(2),
       index: ++seqRef.current,
-      key: base.key,
+      key: boxKey(surface, state2),
+      state: state2,
       surface,
       wv: wv || null,
       guestId: guestId || null,
@@ -3350,6 +3350,16 @@ function Overlay({ ctx, store, t }) {
   const removeItem = (id) => {
     setItems((prev) => prev.filter((entry) => entry.id !== id));
     setDraft(null);
+  };
+  const saveComment = () => {
+    const current = draftRef.current;
+    if (!current) return;
+    const area = commentRef.current;
+    const comment = area ? area.value : current.comment || "";
+    const item = itemsRef.current.find((entry) => entry.id === current.itemId);
+    setItems((prev) => prev.map((entry) => entry.id === current.itemId ? Object.assign({}, entry, { comment }) : entry));
+    setDraft(null);
+    if (item && item.state && !basesRef.current.has(item.key)) ensureBase(item.surface, item.wv, item.state);
   };
   const targetTitle = () => {
     try {
@@ -3548,8 +3558,9 @@ function Overlay({ ctx, store, t }) {
     install();
     const poll = setInterval(() => {
       install();
+      if (draftRef.current) return;
       for (const pair of guests) adoptInto(pair[0]);
-    }, 150);
+    }, 200);
     return () => {
       clearInterval(poll);
       uninstall();
@@ -3709,8 +3720,12 @@ function Overlay({ ctx, store, t }) {
       const keys = [];
       for (const item of ordered) if (!keys.includes(item.key)) keys.push(item.key);
       for (const key of keys) {
-        const base = basesRef.current.get(key);
-        if (!base) throw new Error(t("error.captureFailed"));
+        let base = basesRef.current.get(key);
+        if (!base) {
+          const item = ordered.find((entry) => entry.key === key);
+          if (!item) throw new Error(t("error.captureFailed"));
+          base = ensureBase(item.surface, item.wv, item.state);
+        }
         if (base.ready) await base.ready;
         if (!base.dataUrl) throw new Error(t(base.errorKey || "error.captureFailed"));
       }
@@ -3748,7 +3763,11 @@ function Overlay({ ctx, store, t }) {
       );
       const typed = String(shell.snapshot && shell.snapshot.draft || "");
       shell.setDraft(typed.trim() ? typed.replace(/\s+$/, "") + "\n\n" + text : text);
-      clearAll();
+      try {
+        if (typeof shell.focus === "function") shell.focus();
+      } catch (_error) {
+      }
+      clearAll(true);
       store.set({ active: false });
     } catch (failure) {
       setError(failure instanceof CaptureError ? t(captureErrorKey(failure)) : String(failure && failure.message || failure));
@@ -3811,7 +3830,7 @@ function Overlay({ ctx, store, t }) {
           String(item.index)
         )
       ),
-      items.length > 0 ? React.createElement("button", { key: "clear", className: "dsh-annot-btn dsh-annot-btn--danger", onClick: () => clearAll(false) }, t("bar.clear")) : null,
+      items.length > 0 ? React.createElement("button", { key: "clear", className: "dsh-annot-btn dsh-annot-btn--danger", onClick: () => clearAll(true) }, t("bar.clear")) : null,
       React.createElement(
         "button",
         {
@@ -3899,12 +3918,20 @@ function Overlay({ ctx, store, t }) {
         { key: "card", "data-annot-ui": "card", className: "dsh-annot-card", style: { left, top } },
         React.createElement("div", { className: "dsh-annot-card__title" }, clip(label, 70)),
         React.createElement("textarea", {
+          key: draft.itemId,
           className: "dsh-annot-card__input",
+          ref: commentRef,
           autoFocus: true,
           rows: 3,
           placeholder: t("card.placeholder"),
-          value: draft.comment,
-          onChange: (event) => setDraft(Object.assign({}, draftRef.current, { comment: event.target.value }))
+          defaultValue: draft.comment,
+          onKeyDown: (event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              event.stopPropagation();
+              saveComment();
+            }
+          }
         }),
         React.createElement("div", { className: "dsh-annot-card__where" }, where),
         React.createElement(
@@ -3928,12 +3955,7 @@ function Overlay({ ctx, store, t }) {
             {
               key: "save",
               className: "dsh-annot-btn dsh-annot-btn--primary",
-              onClick: () => {
-                const current = draftRef.current;
-                if (!current) return;
-                setItems((prev) => prev.map((entry) => entry.id === current.itemId ? Object.assign({}, entry, { comment: current.comment }) : entry));
-                setDraft(null);
-              }
+              onClick: saveComment
             },
             t("card.save")
           )

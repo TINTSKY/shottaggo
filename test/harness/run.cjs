@@ -231,7 +231,7 @@ function fail(message, details) {
     const guestImage = allImages[allImages.length - 1];
     if (!/example\.test\/page/.test(finalState.draftText)) fail('guest URL missing from caption', finalState.draftText);
     if (!/这里应该放主按钮/.test(finalState.draftText)) fail('guest comment missing', finalState.draftText);
-    if (!/2\. Buy now/.test(finalState.draftText)) fail('annotation numbering should continue across inserts', finalState.draftText);
+    if (!/1\. Buy now/.test(finalState.draftText)) fail('numbering should restart at 1 for each insert', finalState.draftText);
     if (!guestImage || guestImage.width !== 620 || guestImage.red < 50) fail('guest screenshot is not the expected annotated PNG', guestImage);
     if (finalState.errors.length) fail('runtime errors after guest flow', finalState.errors);
 
