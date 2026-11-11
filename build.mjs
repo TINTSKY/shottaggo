@@ -17,7 +17,7 @@ const options = {
   platform: 'browser',
   target: 'es2020',
   minify: false,
-  external: ['react'],
+  external: ['react', 'react-dom'],
   write: false,
   legalComments: 'none',
 };
@@ -50,6 +50,7 @@ function bundleWithCli() {
     '--platform=browser',
     '--target=es2020',
     '--external:react',
+    '--external:react-dom',
     '--legal-comments=none',
     `--outfile=${TMP}`,
   ];

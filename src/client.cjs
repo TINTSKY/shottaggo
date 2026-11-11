@@ -1,6 +1,7 @@
 'use strict';
 
 const React = require('react');
+const ReactDOM = require('react-dom');
 const {
   CaptureError,
   captureErrorKey,
@@ -44,6 +45,9 @@ const CSS = `
 .dsh-annot-card__where{color:var(--dsw-alias-label-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-annot-card__rows{display:flex;gap:6px;justify-content:flex-end}
 .dsh-annot-error{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);pointer-events:none;max-width:80vw;padding:6px 12px;border-radius:8px;background:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary-foreground,#fff);font:12px/1.4 system-ui,-apple-system,sans-serif;z-index:9001}
+.dsh-annot-fab{position:fixed;right:18px;bottom:18px;z-index:9000;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:16px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 4px 16px rgba(0,0,0,.18);font:12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;pointer-events:auto;opacity:.94}
+.dsh-annot-fab:hover{opacity:1;background:var(--dsw-alias-bg-layer-1)}
+.dsh-annot-fab__icon{color:${BOX};display:inline-flex}
 `;
 
 const ICON = React.createElement(
@@ -636,7 +640,10 @@ function Overlay({ ctx, store, t }) {
     try {
       const conversation = ctx.get('conversation');
       const sessions = ctx.get('sessions');
-      const sessionId = state.sessionId;
+      // The composer's session is normally published by the Trigger. In a
+      // fullscreen Browser pane the conversation is covered, so fall back to
+      // the session that owns the visible webview.
+      const sessionId = sessionIdFromDom() || state.sessionId;
       const session = sessionId && sessions ? (sessions.binding(sessionId) || {}).session : undefined;
       if (!conversation || !session || !sessionId) throw new Error(t('error.noSession'));
       const shell = conversation.input && conversation.input.shell ? conversation.input.shell(sessionId) : null;
@@ -699,7 +706,31 @@ function Overlay({ ctx, store, t }) {
     }
   };
 
-  if (!isActive) return null;
+  if (!isActive) {
+    return ReactDOM.createPortal(
+      React.createElement(
+        'div',
+        { 'data-annot-ui': 'layer', className: 'dsh-annot-layer' },
+        React.createElement(
+          'button',
+          {
+            type: 'button',
+            'data-annot-ui': 'fab',
+            className: 'dsh-annot-fab',
+            title: t('fab.title'),
+            onClick: () => {
+              const sessionId = state.sessionId || sessionIdFromDom();
+              if (sessionId && sessionId !== state.sessionId) store.set({ sessionId: sessionId });
+              store.set({ active: true });
+            },
+          },
+          React.createElement('span', { className: 'dsh-annot-fab__icon' }, ICON),
+          React.createElement('span', null, t('fab.label')),
+        ),
+      ),
+      document.body,
+    );
+  }
 
   const draftItem = draft ? itemsRef.current.find((item) => item.id === draft.itemId) : null;
   const children = [];
@@ -875,7 +906,10 @@ function Overlay({ ctx, store, t }) {
 
   if (error) children.push(React.createElement('div', { key: 'error', 'data-annot-ui': 'error', className: 'dsh-annot-error' }, error));
 
-  return React.createElement('div', { 'data-annot-ui': 'layer', className: 'dsh-annot-layer' }, children);
+  return ReactDOM.createPortal(
+    React.createElement('div', { 'data-annot-ui': 'layer', className: 'dsh-annot-layer' }, children),
+    document.body,
+  );
 }
 
 function safeGuestUrl(wv) {
@@ -883,6 +917,18 @@ function safeGuestUrl(wv) {
     return (wv && wv.getURL && wv.getURL()) || '';
   } catch (_error) {
     return '';
+  }
+}
+
+/** Session that owns the visible Browser pane, including a fullscreen one. */
+function sessionIdFromDom() {
+  try {
+    const frame = document.querySelector('webview[data-sidebar-browser-frame]');
+    const host = frame && frame.closest('[data-sidebar-right-session]');
+    const id = host && host.getAttribute('data-sidebar-right-session');
+    return id || undefined;
+  } catch (_error) {
+    return undefined;
   }
 }
 
@@ -932,6 +978,8 @@ function apply(ctx) {
 const DICT_EN = {
   'trigger.title': 'Annotate',
   'trigger.titleCount': 'Annotate — {count} kept',
+  'fab.label': 'Annotate',
+  'fab.title': 'Annotate the browser page or the Harness UI',
   'bar.hint': 'Click an element, or drag over a region of the page',
   'bar.hintDraft': 'Describe this annotation',
   'bar.capturing': 'Taking a full screenshot…',
@@ -975,6 +1023,8 @@ const DICT_EN = {
 const DICT_ZH = {
   'trigger.title': '标注',
   'trigger.titleCount': '标注 — 已保留 {count} 条',
+  'fab.label': '标注',
+  'fab.title': '标注浏览器页面或 Harness 界面',
   'bar.hint': '点击元素，或在页面上拖出一个区域',
   'bar.hintDraft': '说明这条标注要改什么',
   'bar.capturing': '正在截取整屏…',

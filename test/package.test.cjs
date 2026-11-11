@@ -23,13 +23,15 @@ test('Host and client entry points and bundle patch exist', () => {
 test('built client registers a loadable plugin with the Harness module loader', () => {
   let registered;
   const react = { createElement: () => null };
+  const reactDom = { createPortal: (node) => node };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'client.js'), 'utf8'), {
     window: { __ModuleLoader__: { load: (module) => { registered = module; } } },
   });
   assert.equal(registered.id, pkg.name);
   const plugin = registered.factory((name) => {
-    assert.equal(name, 'react');
-    return react;
+    if (name === 'react') return react;
+    assert.equal(name, 'react-dom');
+    return reactDom;
   });
   assert.equal(plugin.name, pkg.name);
   assert.equal(typeof plugin.apply, 'function');

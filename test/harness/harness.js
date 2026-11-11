@@ -14,6 +14,7 @@
   }
   const plugin = mod.factory((name) => {
     if (name === 'react') return React;
+    if (name === 'react-dom') return ReactDOM;
     throw new Error('unexpected module request: ' + name);
   });
 

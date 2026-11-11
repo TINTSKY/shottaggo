@@ -3105,6 +3105,7 @@ var require_guest = __commonJS({
 
 // src/client.cjs
 var React = require("react");
+var ReactDOM = require("react-dom");
 var {
   CaptureError,
   captureErrorKey,
@@ -3146,6 +3147,9 @@ var CSS2 = `
 .dsh-annot-card__where{color:var(--dsw-alias-label-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-annot-card__rows{display:flex;gap:6px;justify-content:flex-end}
 .dsh-annot-error{position:fixed;bottom:62px;left:50%;transform:translateX(-50%);pointer-events:none;max-width:80vw;padding:6px 12px;border-radius:8px;background:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-label-primary-foreground,#fff);font:12px/1.4 system-ui,-apple-system,sans-serif;z-index:9001}
+.dsh-annot-fab{position:fixed;right:18px;bottom:18px;z-index:9000;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:16px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 4px 16px rgba(0,0,0,.18);font:12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;pointer-events:auto;opacity:.94}
+.dsh-annot-fab:hover{opacity:1;background:var(--dsw-alias-bg-layer-1)}
+.dsh-annot-fab__icon{color:${BOX};display:inline-flex}
 `;
 var ICON = React.createElement(
   "svg",
@@ -3680,7 +3684,7 @@ function Overlay({ ctx, store, t }) {
     try {
       const conversation = ctx.get("conversation");
       const sessions = ctx.get("sessions");
-      const sessionId = state.sessionId;
+      const sessionId = sessionIdFromDom() || state.sessionId;
       const session = sessionId && sessions ? (sessions.binding(sessionId) || {}).session : void 0;
       if (!conversation || !session || !sessionId) throw new Error(t("error.noSession"));
       const shell = conversation.input && conversation.input.shell ? conversation.input.shell(sessionId) : null;
@@ -3739,7 +3743,31 @@ function Overlay({ ctx, store, t }) {
       setBusy(false);
     }
   };
-  if (!isActive) return null;
+  if (!isActive) {
+    return ReactDOM.createPortal(
+      React.createElement(
+        "div",
+        { "data-annot-ui": "layer", className: "dsh-annot-layer" },
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            "data-annot-ui": "fab",
+            className: "dsh-annot-fab",
+            title: t("fab.title"),
+            onClick: () => {
+              const sessionId = state.sessionId || sessionIdFromDom();
+              if (sessionId && sessionId !== state.sessionId) store.set({ sessionId });
+              store.set({ active: true });
+            }
+          },
+          React.createElement("span", { className: "dsh-annot-fab__icon" }, ICON),
+          React.createElement("span", null, t("fab.label"))
+        )
+      ),
+      document.body
+    );
+  }
   const draftItem = draft ? itemsRef.current.find((item) => item.id === draft.itemId) : null;
   const children = [];
   const pendingBases = Array.from(basesRef.current.values()).filter((base) => base.status === "capturing").length;
@@ -3895,13 +3923,26 @@ function Overlay({ ctx, store, t }) {
     );
   }
   if (error) children.push(React.createElement("div", { key: "error", "data-annot-ui": "error", className: "dsh-annot-error" }, error));
-  return React.createElement("div", { "data-annot-ui": "layer", className: "dsh-annot-layer" }, children);
+  return ReactDOM.createPortal(
+    React.createElement("div", { "data-annot-ui": "layer", className: "dsh-annot-layer" }, children),
+    document.body
+  );
 }
 function safeGuestUrl(wv) {
   try {
     return wv && wv.getURL && wv.getURL() || "";
   } catch (_error) {
     return "";
+  }
+}
+function sessionIdFromDom() {
+  try {
+    const frame = document.querySelector("webview[data-sidebar-browser-frame]");
+    const host = frame && frame.closest("[data-sidebar-right-session]");
+    const id = host && host.getAttribute("data-sidebar-right-session");
+    return id || void 0;
+  } catch (_error) {
+    return void 0;
   }
 }
 function guestInstallScript() {
@@ -3948,6 +3989,8 @@ function apply(ctx) {
 var DICT_EN = {
   "trigger.title": "Annotate",
   "trigger.titleCount": "Annotate \u2014 {count} kept",
+  "fab.label": "Annotate",
+  "fab.title": "Annotate the browser page or the Harness UI",
   "bar.hint": "Click an element, or drag over a region of the page",
   "bar.hintDraft": "Describe this annotation",
   "bar.capturing": "Taking a full screenshot\u2026",
@@ -3990,6 +4033,8 @@ var DICT_EN = {
 var DICT_ZH = {
   "trigger.title": "\u6807\u6CE8",
   "trigger.titleCount": "\u6807\u6CE8 \u2014 \u5DF2\u4FDD\u7559 {count} \u6761",
+  "fab.label": "\u6807\u6CE8",
+  "fab.title": "\u6807\u6CE8\u6D4F\u89C8\u5668\u9875\u9762\u6216 Harness \u754C\u9762",
   "bar.hint": "\u70B9\u51FB\u5143\u7D20\uFF0C\u6216\u5728\u9875\u9762\u4E0A\u62D6\u51FA\u4E00\u4E2A\u533A\u57DF",
   "bar.hintDraft": "\u8BF4\u660E\u8FD9\u6761\u6807\u6CE8\u8981\u6539\u4EC0\u4E48",
   "bar.capturing": "\u6B63\u5728\u622A\u53D6\u6574\u5C4F\u2026",
