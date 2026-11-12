@@ -6,6 +6,14 @@
   "main": "index.js",
   "icon": "./icon.svg",
   "author": "ShotTagGo contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TINTSKY/shottaggo.git"
+  },
+  "homepage": "https://github.com/TINTSKY/shottaggo#readme",
+  "bugs": {
+    "url": "https://github.com/TINTSKY/shottaggo/issues"
+  },
   "keywords": [
     "deepseek-harness",
     "dsh",
