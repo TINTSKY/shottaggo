@@ -4,7 +4,7 @@
 
 `DeepSeek Harness 0.2.2` · `Desktop 优先` · `MIT`
 
-[English](README.en.md) | 中文
+[English](README.en.md) | 中文 · [GitHub](https://github.com/TINTSKY/shottaggo) · [Issues](https://github.com/TINTSKY/shottaggo/issues)
 
 ![在 Browser 面板里标注](docs/hero.png)
 

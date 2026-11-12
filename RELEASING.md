@@ -1,12 +1,12 @@
-# Releasing ShotTagGo DSH
+﻿# Releasing ShotTagGo DSH
 
 ## Before the first release
 
 1. Create the Git repository (suggested name: `shottaggo`) and push this tree.
 2. Fill the placeholders in `package.json`:
-   - `repository`: `git+https://github.com/<org>/shottaggo.git`
-   - `homepage`: `https://github.com/<org>/shottaggo#readme`
-   - `bugs`: `https://github.com/<org>/shottaggo/issues`
+   - `repository`: `git+https://github.com/TINTSKY/shottaggo.git`
+   - `homepage`: `https://github.com/TINTSKY/shottaggo#readme`
+   - `bugs`: `https://github.com/TINTSKY/shottaggo/issues`
 3. Confirm the npm name `dsh-shottaggo` is still free (`npm view dsh-shottaggo`), and that you are logged in to the right npm account.
 4. Complete the clearance items that the initial search could not cover:
    - trademark search in class 9 (software) and class 42 (SaaS) for "ShotTagGo";
