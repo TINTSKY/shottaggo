@@ -50,16 +50,26 @@
 
 先在 **设置 → 账号 → Manage dsh Command…** 装好 Desktop 自带的 `dsh`，然后完全退出 Desktop。
 
-从 npm（发布后）：
+**推荐：从 GitHub Release 安装**（npm 账号恢复后再补一行安装）
+
+1. 打开 [Releases](https://github.com/TINTSKY/shottaggo/releases)，下载 `dsh-shottaggo-0.2.0.tgz`。
+2. 安装：
+
+```sh
+dsh plugin --profile desktop add "C:\path\to\dsh-shottaggo-0.2.0.tgz"
+```
+
+如果当前插件管理器版本不接受 `.tgz`，改用 clone + link：
+
+```sh
+git clone https://github.com/TINTSKY/shottaggo.git
+dsh plugin --profile desktop add "link:C:\path\to\shottaggo"
+```
+
+发布到 npm 之后，可以改用：
 
 ```sh
 dsh plugin --profile desktop add dsh-shottaggo
-```
-
-从本地源码 / 开发中的 checkout：
-
-```sh
-dsh plugin --profile desktop add "link:C:\path\to\shottaggo"
 ```
 
 重新打开 Desktop，到「插件」页确认 `dsh-shottaggo` 已启用。本仓库已经提交构建产物 `client.js`，安装时不需要构建。

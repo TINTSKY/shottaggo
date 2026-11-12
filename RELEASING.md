@@ -1,4 +1,30 @@
-﻿# Releasing ShotTagGo DSH
+# Releasing ShotTagGo DSH
+
+> npm registration is currently blocked from the maintainer's network. Until an
+> npm account is available, cut a GitHub Release with the `npm pack` tarball and
+> keep the README install instructions pointed at that asset. The npm steps below
+> are the target path once the account exists.
+
+## GitHub-only release (current fallback)
+
+```sh
+npm version patch        # bump package.json + package-lock.json
+npm run check
+npm pack                 # produces dsh-shottaggo-<version>.tgz
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "Release ShotTagGo DSH <version>"
+git tag -a "v<version>" -m "ShotTagGo DSH <version>"
+git push --follow-tags
+```
+
+Create the release from the tag and attach the `.tgz`. Users install it with:
+
+```sh
+dsh plugin --profile desktop add "C:\path\to\dsh-shottaggo-<version>.tgz"
+```
+
+If a plugin manager build rejects `.tgz` specs, the clone + `link:` path in the
+README remains the verified fallback.
 
 ## Before the first release
 

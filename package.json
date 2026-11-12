@@ -1,6 +1,6 @@
 {
   "name": "dsh-shottaggo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ShotTagGo DSH — full-frame screenshot annotation for DeepSeek Harness. Numbered red boxes and comments inserted into the composer.",
   "type": "module",
   "main": "index.js",

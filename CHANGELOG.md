@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0
+## 0.2.0
 
 First public shape of **ShotTagGo DSH / 截图批注Go**.
 
