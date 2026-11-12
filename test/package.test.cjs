@@ -37,3 +37,27 @@ test('built client registers a loadable plugin with the Harness module loader', 
   assert.equal(typeof plugin.apply, 'function');
   assert.ok(plugin.inject.includes('slots'));
 });
+
+test('English and Chinese dictionaries cover the same keys', () => {
+  let registered;
+  const react = { createElement: () => null };
+  const reactDom = { createPortal: (node) => node };
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'client.js'), 'utf8'), {
+    window: { __ModuleLoader__: { load: (module) => { registered = module; } } },
+  });
+  const plugin = registered.factory((name) => (name === 'react' ? react : reactDom));
+  const dictionaries = {};
+  const ctx = {
+    effect: (fn) => fn(),
+    slots: { inject: (name, callback) => callback(), register: () => () => {} },
+    locale: {
+      register: (namespace, dicts) => { dictionaries[namespace] = dicts; return () => {}; },
+      bind: () => (key) => key,
+    },
+    get: () => undefined,
+  };
+  plugin.apply(ctx);
+  const dicts = Object.values(dictionaries)[0];
+  assert.ok(dicts && dicts.en && dicts.zh, 'both locale dictionaries are registered');
+  assert.deepEqual(Object.keys(dicts.en).sort(), Object.keys(dicts.zh).sort());
+});

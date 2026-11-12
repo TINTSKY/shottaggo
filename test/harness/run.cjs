@@ -219,6 +219,15 @@ function fail(message, details) {
     if (magenta < 100) fail('host screenshot lost <img> pixels', magenta);
     if (cyan < 100) fail('host screenshot lost <canvas> pixels', cyan);
 
+    const fabZh = await cdp.evaluate('(document.querySelector(\'[data-annot-ui="fab"]\') || {}).textContent || ""');
+    await cdp.evaluate('__HARNESS.setLocale("en")');
+    await cdp.evaluate('__HARNESS.frames(3)');
+    const fabEn = await cdp.evaluate('(document.querySelector(\'[data-annot-ui="fab"]\') || {}).textContent || ""');
+    await cdp.evaluate('__HARNESS.setLocale("zh")');
+    await cdp.evaluate('__HARNESS.frames(3)');
+    if (!/标注/.test(fabZh)) fail('Chinese UI label missing', fabZh);
+    if (!/Annotate/.test(fabEn)) fail('English UI did not appear after locale switch', fabEn);
+
     // --- browser-panel flow: mock guest picks a region --------------------
     await cdp.evaluate('__HARNESS.clickIn(\'[data-annot-ui="trigger"]\')');
     await waitFor(() => cdp.evaluate('!!document.querySelector(\'[data-annot-ui="bar"]\')'), 5000, 'bar reopened');

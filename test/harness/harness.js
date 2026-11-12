@@ -19,14 +19,24 @@
   });
 
   const dictionaries = {};
+  let activeLocale = 'zh';
+  const localeListeners = new Set();
   const locale = {
     register(namespace, dicts) {
       dictionaries[namespace] = dicts;
       return () => {};
     },
+    getSnapshot() {
+      return activeLocale;
+    },
+    subscribe(listener) {
+      localeListeners.add(listener);
+      return () => localeListeners.delete(listener);
+    },
     bind(namespace) {
       return (key, params) => {
-        const table = (dictionaries[namespace] && (dictionaries[namespace].zh || dictionaries[namespace].en)) || {};
+        const dict = dictionaries[namespace] || {};
+        const table = dict[activeLocale] || dict.en || {};
         let text = table[key] || key;
         if (params) {
           text = text.replace(/\{(\w+)\}/g, (match, name) => (params[name] === undefined ? match : String(params[name])));
@@ -34,6 +44,10 @@
         return text;
       };
     },
+  };
+  H.setLocale = (id) => {
+    activeLocale = id;
+    for (const listener of localeListeners) listener();
   };
 
   const shell = {

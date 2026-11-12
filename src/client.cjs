@@ -116,6 +116,23 @@ function Trigger({ props, store, t }) {
 }
 
 function Overlay({ ctx, store, t }) {
+  // Re-render when the user switches the Harness locale; `t` itself is a
+  // stable binder that resolves the active locale on every call.
+  const locale = ctx && ctx.locale;
+  const subscribeLocale = (listener) => (locale && typeof locale.subscribe === 'function'
+    ? locale.subscribe(listener)
+    : () => {});
+  const localeSnapshot = () => {
+    try {
+      const value = locale && typeof locale.getSnapshot === 'function' ? locale.getSnapshot() : 0;
+      if (value && typeof value === 'object') return value.revision || value.locale || 0;
+      return value;
+    } catch (_error) {
+      return 0;
+    }
+  };
+  React.useSyncExternalStore(subscribeLocale, localeSnapshot, localeSnapshot);
+
   const state = React.useSyncExternalStore(store.subscribe, store.get, store.get);
   const [items, setItems] = React.useState([]);
   const [draft, setDraftState] = React.useState(null);
@@ -1097,7 +1114,7 @@ function apply(ctx) {
   );
 
   ctx.slots.inject('shell.overlay', () =>
-    ctx.slots.register({ name: 'shell.overlay', id: 'annotate-viewport-overlay', order: 400 }, () =>
+    ctx.slots.register({ name: 'shell.overlay', id: 'annotate-viewport-overlay', order: 400, locale: NS }, () =>
       React.createElement(Overlay, { ctx: ctx, store: store, t: t }),
     ),
   );
