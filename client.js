@@ -2327,7 +2327,7 @@ var require_capture = __commonJS({
         layouts.push({ parent, omitted });
       }
       return {
-        filter: (node) => node.nodeType !== 1 || included.has(node),
+        filter: (node) => node.nodeType !== 1 || included.has(node) && !(node.matches && node.matches("[data-annot-broken]")),
         restore: () => layouts.forEach(({ parent }) => parent.removeAttribute(marker)),
         fill(svg) {
           layouts.forEach(({ omitted }, id) => {
@@ -2352,11 +2352,44 @@ var require_capture = __commonJS({
         }
       };
     }
+    async function markBrokenImages(viewport) {
+      const broken = [];
+      const images = Array.from(document.images || []);
+      await Promise.all(images.map(async (image) => {
+        const rect = image.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) return;
+        if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= viewport.width || rect.top >= viewport.height) return;
+        const src = image.currentSrc || image.src;
+        if (!src || /^data:/i.test(src)) return;
+        const scheme = (src.split(":")[0] || "").toLowerCase();
+        const loaded = image.naturalWidth > 0;
+        if (loaded && (scheme === "http" || scheme === "https" || scheme === "blob")) return;
+        try {
+          const response = await fetch(src, { cache: "force-cache" });
+          if (!response.ok) throw new Error(String(response.status));
+        } catch (_error) {
+          image.setAttribute("data-annot-broken", "1");
+          broken.push(image);
+        }
+      }));
+      return {
+        count: broken.length,
+        /** Last-resort fallback: exclude every image and retry the snapshot. */
+        markAll: () => {
+          for (const image of Array.from(document.images || [])) {
+            image.setAttribute("data-annot-broken", "1");
+            broken.push(image);
+          }
+        },
+        restore: () => broken.forEach((image) => image.removeAttribute("data-annot-broken"))
+      };
+    }
     async function hostSnapshot(viewport) {
       const rect = { x: 0, y: 0, width: viewport.width, height: viewport.height };
       const box = clipRect2(rect, viewport.width, viewport.height, 1);
       if (!box) throw new CaptureError2("invalid");
       const snapshot = boundedSnapshot(box);
+      const broken = await markBrokenImages(viewport);
       const marker = "data-annot-scroll-" + Math.random().toString(36).slice(2);
       const scrollers = [];
       const positioned = [];
@@ -2382,9 +2415,22 @@ var require_capture = __commonJS({
           filter: snapshot.filter
         });
       } catch (error) {
-        throw new CaptureError2(error && error.name === "SecurityError" ? "protected" : "assets");
+        if (error && error.name === "SecurityError") throw new CaptureError2("protected");
+        broken.markAll();
+        try {
+          data = await toSvg(document.documentElement, {
+            width: viewport.width,
+            height: viewport.height,
+            skipFonts: true,
+            cacheBust: false,
+            filter: snapshot.filter
+          });
+        } catch (_retry) {
+          throw new CaptureError2("assets");
+        }
       } finally {
         snapshot.restore();
+        broken.restore();
         scrollers.forEach(({ node }) => node.removeAttribute(marker));
         positioned.forEach(({ node }) => node.removeAttribute(marker + "-position"));
       }
@@ -2455,15 +2501,23 @@ var require_capture = __commonJS({
         for (const [key, value] of Object.entries(values)) node.style.setProperty(key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()), value, "important");
         svg.querySelector("foreignObject").firstElementChild.appendChild(node);
       }
-      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+      return {
+        dataUrl: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg)),
+        skipped: broken.count
+      };
     }
     async function captureHostViewport2() {
       const viewport = { width: window.innerWidth, height: window.innerHeight, x: window.scrollX, y: window.scrollY };
       if (!(viewport.width > 0 && viewport.height > 0)) throw new CaptureError2("invalid");
       if (viewport.width * viewport.height > MAX_VIEWPORT_AREA) throw new CaptureError2("tooLarge");
-      const svg = await hostSnapshot(viewport);
-      const shot = await rasterize(svg);
-      return { dataUrl: shot.dataUrl, image: { width: shot.width, height: shot.height }, viewport };
+      const snapshot = await hostSnapshot(viewport);
+      const shot = await rasterize(snapshot.dataUrl);
+      return {
+        dataUrl: shot.dataUrl,
+        image: { width: shot.width, height: shot.height },
+        viewport,
+        skipped: snapshot.skipped
+      };
     }
     async function captureGuestViewport2(wv) {
       if (!wv || typeof wv.capturePage !== "function" || typeof wv.executeJavaScript !== "function") {
@@ -3302,6 +3356,7 @@ function Overlay({ ctx, store, t }) {
     base.ready = run.then((shot) => {
       base.dataUrl = shot.dataUrl;
       base.image = shot.image;
+      base.skipped = shot.skipped || 0;
       base.viewport = { width: shot.viewport.width, height: shot.viewport.height };
       base.state = Object.assign({}, base.state, {
         x: shot.viewport.x,
@@ -3766,8 +3821,10 @@ function Overlay({ ctx, store, t }) {
         })),
         t
       );
+      const skipped = groups.reduce((sum, group) => sum + (group.base.skipped || 0), 0);
+      const caption = skipped > 0 ? text + "\n" + t("insert.skipped", { count: skipped }) : text;
       const typed = String(shell.snapshot && shell.snapshot.draft || "");
-      shell.setDraft(typed.trim() ? typed.replace(/\s+$/, "") + "\n\n" + text : text);
+      shell.setDraft(typed.trim() ? typed.replace(/\s+$/, "") + "\n\n" + caption : caption);
       try {
         if (typeof shell.focus === "function") shell.focus();
       } catch (_error) {
@@ -4094,6 +4151,7 @@ var DICT_EN = {
   "insert.noComment": "(no comment)",
   "insert.where": "   selector: {selector}",
   "insert.rect": "   rect: x={x}, y={y}, w={width}, h={height}",
+  "insert.skipped": "({count} image(s) could not be rendered and were skipped)",
   "insert.regionLabel": "Region",
   "error.noSession": "Open a chat before inserting annotations",
   "error.noComposer": "The target chat has no composer available. Open that chat and try again.",
@@ -4102,7 +4160,7 @@ var DICT_EN = {
   "error.captureFailed": "The screenshot could not be produced. Try again.",
   "error.captureInvalid": "The viewport is not available. Try again.",
   "error.captureTooLarge": "This viewport is too large to capture. Resize the window or zoom out.",
-  "error.captureAssets": "A style or image in the page could not be rendered.",
+  "error.captureAssets": "A style or image in the page could not be rendered. Unreachable images are now skipped automatically; refresh and retry, or annotate another page.",
   "error.captureProtected": "The page contains protected canvas/video pixels that cannot be read.",
   "error.captureDecode": "The screenshot could not be decoded.",
   "error.captureChanged": "The page scrolled, resized or navigated during capture. Take the annotation again.",
@@ -4143,6 +4201,7 @@ var DICT_ZH = {
   "insert.noComment": "\uFF08\u65E0\u8BC4\u8BBA\uFF09",
   "insert.where": "   \u9009\u62E9\u5668\uFF1A{selector}",
   "insert.rect": "   \u533A\u57DF\uFF1Ax={x}, y={y}, w={width}, h={height}",
+  "insert.skipped": "\uFF08\u622A\u56FE\u4E2D\u6709 {count} \u5F20\u56FE\u7247\u65E0\u6CD5\u6E32\u67D3\uFF0C\u5DF2\u8DF3\u8FC7\uFF09",
   "insert.regionLabel": "\u6846\u9009\u533A\u57DF",
   "error.noSession": "\u5148\u6253\u5F00\u4E00\u4E2A\u4F1A\u8BDD\uFF0C\u518D\u63D2\u5165\u6807\u6CE8",
   "error.noComposer": "\u76EE\u6807\u4F1A\u8BDD\u7684\u8F93\u5165\u6846\u4E0D\u53EF\u7528\uFF0C\u8BF7\u5148\u6253\u5F00\u8BE5\u4F1A\u8BDD\u518D\u63D2\u5165\u3002",
@@ -4151,7 +4210,7 @@ var DICT_ZH = {
   "error.captureFailed": "\u622A\u56FE\u751F\u6210\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002",
   "error.captureInvalid": "\u62FF\u4E0D\u5230\u89C6\u53E3\u4FE1\u606F\uFF0C\u8BF7\u91CD\u8BD5\u3002",
   "error.captureTooLarge": "\u89C6\u53E3\u592A\u5927\uFF0C\u65E0\u6CD5\u622A\u56FE\u3002\u8BF7\u7F29\u5C0F\u7A97\u53E3\u6216\u964D\u4F4E\u7F29\u653E\u3002",
-  "error.captureAssets": "\u9875\u9762\u91CC\u6709\u6837\u5F0F\u6216\u56FE\u7247\u65E0\u6CD5\u6E32\u67D3\u3002",
+  "error.captureAssets": "\u9875\u9762\u91CC\u6709\u6837\u5F0F\u6216\u56FE\u7247\u65E0\u6CD5\u6E32\u67D3\uFF08\u65E0\u6CD5\u8BFB\u53D6\u7684\u56FE\u7247\u4F1A\u81EA\u52A8\u8DF3\u8FC7\uFF09\u3002\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5\uFF0C\u6216\u6362\u4E00\u4E2A\u9875\u9762\u6807\u6CE8\u3002",
   "error.captureProtected": "\u9875\u9762\u5305\u542B\u65E0\u6CD5\u8BFB\u53D6\u7684\u53D7\u4FDD\u62A4 canvas/\u89C6\u9891\u50CF\u7D20\u3002",
   "error.captureDecode": "\u622A\u56FE\u89E3\u7801\u5931\u8D25\u3002",
   "error.captureChanged": "\u622A\u56FE\u671F\u95F4\u9875\u9762\u6EDA\u52A8\u3001\u7F29\u653E\u6216\u8DF3\u8F6C\u4E86\uFF0C\u8BF7\u91CD\u65B0\u6807\u6CE8\u3002",

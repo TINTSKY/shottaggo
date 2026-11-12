@@ -97,7 +97,8 @@ function boundedSnapshot(rect) {
     layouts.push({ parent, omitted });
   }
   return {
-    filter: (node) => node.nodeType !== 1 || included.has(node),
+    filter: (node) => node.nodeType !== 1
+      || (included.has(node) && !(node.matches && node.matches('[data-annot-broken]'))),
     restore: () => layouts.forEach(({ parent }) => parent.removeAttribute(marker)),
     fill(svg) {
       layouts.forEach(({ omitted }, id) => {
@@ -117,6 +118,47 @@ function boundedSnapshot(rect) {
 }
 
 /**
+ * html-to-image rejects the whole snapshot when one <img> cannot be fetched
+ * (resource:// schemes, expired blobs, CORS, 404). Mark those images and let
+ * the snapshot filter drop them so the rest of the page still renders.
+ */
+async function markBrokenImages(viewport) {
+  const broken = [];
+  const images = Array.from(document.images || []);
+  await Promise.all(images.map(async (image) => {
+    const rect = image.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+    if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= viewport.width || rect.top >= viewport.height) return;
+    const src = image.currentSrc || image.src;
+    if (!src || /^data:/i.test(src)) return;
+    const scheme = (src.split(':')[0] || '').toLowerCase();
+    const loaded = image.naturalWidth > 0;
+    // Ordinary http(s)/blob images that already decoded are safe to leave to
+    // html-to-image. Custom schemes (dsh-resource://) and images that failed to
+    // load are the ones whose fetch commonly rejects the whole snapshot.
+    if (loaded && (scheme === 'http' || scheme === 'https' || scheme === 'blob')) return;
+    try {
+      const response = await fetch(src, { cache: 'force-cache' });
+      if (!response.ok) throw new Error(String(response.status));
+    } catch (_error) {
+      image.setAttribute('data-annot-broken', '1');
+      broken.push(image);
+    }
+  }));
+  return {
+    count: broken.length,
+    /** Last-resort fallback: exclude every image and retry the snapshot. */
+    markAll: () => {
+      for (const image of Array.from(document.images || [])) {
+        image.setAttribute('data-annot-broken', '1');
+        broken.push(image);
+      }
+    },
+    restore: () => broken.forEach((image) => image.removeAttribute('data-annot-broken')),
+  };
+}
+
+/**
  * Serialize the whole Harness window into an SVG snapshot, reconstructing scroll
  * offsets and fixed/sticky content that plain DOM cloning loses.
  */
@@ -125,6 +167,7 @@ async function hostSnapshot(viewport) {
   const box = clipRect(rect, viewport.width, viewport.height, 1);
   if (!box) throw new CaptureError('invalid');
   const snapshot = boundedSnapshot(box);
+  const broken = await markBrokenImages(viewport);
   const marker = 'data-annot-scroll-' + Math.random().toString(36).slice(2);
   const scrollers = [];
   const positioned = [];
@@ -145,9 +188,19 @@ async function hostSnapshot(viewport) {
     data = await toSvg(document.documentElement, { width: viewport.width, height: viewport.height,
       skipFonts: true, cacheBust: false, filter: snapshot.filter });
   } catch (error) {
-    throw new CaptureError(error && error.name === 'SecurityError' ? 'protected' : 'assets');
+    if (error && error.name === 'SecurityError') throw new CaptureError('protected');
+    // One stubborn image should not lose the whole screenshot: drop every
+    // image from the clone and try once more.
+    broken.markAll();
+    try {
+      data = await toSvg(document.documentElement, { width: viewport.width, height: viewport.height,
+        skipFonts: true, cacheBust: false, filter: snapshot.filter });
+    } catch (_retry) {
+      throw new CaptureError('assets');
+    }
   } finally {
     snapshot.restore();
+    broken.restore();
     scrollers.forEach(({ node }) => node.removeAttribute(marker));
     positioned.forEach(({ node }) => node.removeAttribute(marker + '-position'));
   }
@@ -184,7 +237,10 @@ async function hostSnapshot(viewport) {
     for (const [key, value] of Object.entries(values)) node.style.setProperty(key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()), value, 'important');
     svg.querySelector('foreignObject').firstElementChild.appendChild(node);
   }
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+  return {
+    dataUrl: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg)),
+    skipped: broken.count,
+  };
 }
 
 /** Full Harness window, one image per viewport state. */
@@ -192,9 +248,14 @@ async function captureHostViewport() {
   const viewport = { width: window.innerWidth, height: window.innerHeight, x: window.scrollX, y: window.scrollY };
   if (!(viewport.width > 0 && viewport.height > 0)) throw new CaptureError('invalid');
   if (viewport.width * viewport.height > MAX_VIEWPORT_AREA) throw new CaptureError('tooLarge');
-  const svg = await hostSnapshot(viewport);
-  const shot = await rasterize(svg);
-  return { dataUrl: shot.dataUrl, image: { width: shot.width, height: shot.height }, viewport: viewport };
+  const snapshot = await hostSnapshot(viewport);
+  const shot = await rasterize(snapshot.dataUrl);
+  return {
+    dataUrl: shot.dataUrl,
+    image: { width: shot.width, height: shot.height },
+    viewport: viewport,
+    skipped: snapshot.skipped,
+  };
 }
 
 /**

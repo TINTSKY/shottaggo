@@ -224,6 +224,7 @@ function Overlay({ ctx, store, t }) {
       .then((shot) => {
         base.dataUrl = shot.dataUrl;
         base.image = shot.image;
+        base.skipped = shot.skipped || 0;
         base.viewport = { width: shot.viewport.width, height: shot.viewport.height };
         base.state = Object.assign({}, base.state, {
           x: shot.viewport.x,
@@ -738,8 +739,10 @@ function Overlay({ ctx, store, t }) {
         })),
         t,
       );
+      const skipped = groups.reduce((sum, group) => sum + (group.base.skipped || 0), 0);
+      const caption = skipped > 0 ? text + '\n' + t('insert.skipped', { count: skipped }) : text;
       const typed = String((shell.snapshot && shell.snapshot.draft) || '');
-      shell.setDraft(typed.trim() ? typed.replace(/\s+$/, '') + '\n\n' + text : text);
+      shell.setDraft(typed.trim() ? typed.replace(/\s+$/, '') + '\n\n' + caption : caption);
       try {
         if (typeof shell.focus === 'function') shell.focus();
       } catch (_error) {
@@ -1114,6 +1117,7 @@ const DICT_EN = {
   'insert.noComment': '(no comment)',
   'insert.where': '   selector: {selector}',
   'insert.rect': '   rect: x={x}, y={y}, w={width}, h={height}',
+  'insert.skipped': '({count} image(s) could not be rendered and were skipped)',
   'insert.regionLabel': 'Region',
   'error.noSession': 'Open a chat before inserting annotations',
   'error.noComposer': 'The target chat has no composer available. Open that chat and try again.',
@@ -1122,7 +1126,7 @@ const DICT_EN = {
   'error.captureFailed': 'The screenshot could not be produced. Try again.',
   'error.captureInvalid': 'The viewport is not available. Try again.',
   'error.captureTooLarge': 'This viewport is too large to capture. Resize the window or zoom out.',
-  'error.captureAssets': 'A style or image in the page could not be rendered.',
+  'error.captureAssets': 'A style or image in the page could not be rendered. Unreachable images are now skipped automatically; refresh and retry, or annotate another page.',
   'error.captureProtected': 'The page contains protected canvas/video pixels that cannot be read.',
   'error.captureDecode': 'The screenshot could not be decoded.',
   'error.captureChanged': 'The page scrolled, resized or navigated during capture. Take the annotation again.',
@@ -1164,6 +1168,7 @@ const DICT_ZH = {
   'insert.noComment': '（无评论）',
   'insert.where': '   选择器：{selector}',
   'insert.rect': '   区域：x={x}, y={y}, w={width}, h={height}',
+  'insert.skipped': '（截图中有 {count} 张图片无法渲染，已跳过）',
   'insert.regionLabel': '框选区域',
   'error.noSession': '先打开一个会话，再插入标注',
   'error.noComposer': '目标会话的输入框不可用，请先打开该会话再插入。',
@@ -1172,7 +1177,7 @@ const DICT_ZH = {
   'error.captureFailed': '截图生成失败，请重试。',
   'error.captureInvalid': '拿不到视口信息，请重试。',
   'error.captureTooLarge': '视口太大，无法截图。请缩小窗口或降低缩放。',
-  'error.captureAssets': '页面里有样式或图片无法渲染。',
+  'error.captureAssets': '页面里有样式或图片无法渲染（无法读取的图片会自动跳过）。请刷新后重试，或换一个页面标注。',
   'error.captureProtected': '页面包含无法读取的受保护 canvas/视频像素。',
   'error.captureDecode': '截图解码失败。',
   'error.captureChanged': '截图期间页面滚动、缩放或跳转了，请重新标注。',
