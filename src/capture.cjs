@@ -118,43 +118,73 @@ function boundedSnapshot(rect) {
 }
 
 /**
- * html-to-image rejects the whole snapshot when one <img> cannot be fetched
- * (resource:// schemes, expired blobs, CORS, 404). Mark those images and let
- * the snapshot filter drop them so the rest of the page still renders.
+ * Save image/canvas pixels into data URLs before cloning. This keeps images in
+ * the snapshot even when their URLs are un-fetchable (custom schemes, auth
+ * routes), and drops only the ones the browser genuinely cannot read (tainted
+ * canvas, unloaded image).
  */
-async function markBrokenImages(viewport) {
+async function prepareMedia(viewport) {
+  const changed = [];
   const broken = [];
-  const images = Array.from(document.images || []);
-  await Promise.all(images.map(async (image) => {
-    const rect = image.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) return;
-    if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= viewport.width || rect.top >= viewport.height) return;
-    const src = image.currentSrc || image.src;
-    if (!src || /^data:/i.test(src)) return;
-    const scheme = (src.split(':')[0] || '').toLowerCase();
-    const loaded = image.naturalWidth > 0;
-    // Ordinary http(s)/blob images that already decoded are safe to leave to
-    // html-to-image. Custom schemes (dsh-resource://) and images that failed to
-    // load are the ones whose fetch commonly rejects the whole snapshot.
-    if (loaded && (scheme === 'http' || scheme === 'https' || scheme === 'blob')) return;
-    try {
-      const response = await fetch(src, { cache: 'force-cache' });
-      if (!response.ok) throw new Error(String(response.status));
-    } catch (_error) {
-      image.setAttribute('data-annot-broken', '1');
-      broken.push(image);
+  const mark = (node) => {
+    node.setAttribute('data-annot-broken', '1');
+    broken.push(node);
+  };
+  const visible = (node) => {
+    const rect = node.getBoundingClientRect();
+    return rect.width >= 1 && rect.height >= 1 && rect.right > 0 && rect.bottom > 0
+      && rect.left < viewport.width && rect.top < viewport.height;
+  };
+  for (const image of Array.from(document.images || [])) {
+    if (!visible(image)) continue;
+    if (!image.naturalWidth || !image.naturalHeight) {
+      mark(image);
+      continue;
     }
-  }));
+    const src = image.currentSrc || image.src;
+    if (!src || /^data:/i.test(src)) continue;
+    if (image.naturalWidth * image.naturalHeight > 16000000) continue; // leave huge photos to html-to-image
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('no 2d context');
+      context.drawImage(image, 0, 0);
+      let dataUrl = canvas.toDataURL('image/webp', 0.95);
+      if (!/^data:image\/webp/i.test(dataUrl)) dataUrl = canvas.toDataURL('image/png');
+      changed.push({ image, src: image.getAttribute('src'), srcset: image.getAttribute('srcset') });
+      image.removeAttribute('srcset');
+      image.setAttribute('src', dataUrl);
+    } catch (_error) {
+      // Cross-origin pixels without CORS, broken SVG, protected video frame…
+      mark(image);
+    }
+  }
+  for (const canvas of Array.from(document.querySelectorAll('canvas'))) {
+    if (!visible(canvas)) continue;
+    try {
+      canvas.toDataURL();
+    } catch (_error) {
+      mark(canvas);
+    }
+  }
   return {
-    count: broken.length,
-    /** Last-resort fallback: exclude every image and retry the snapshot. */
+    getCount: () => broken.length,
+    /** Last-resort fallback: exclude every image and canvas and retry. */
     markAll: () => {
-      for (const image of Array.from(document.images || [])) {
-        image.setAttribute('data-annot-broken', '1');
-        broken.push(image);
-      }
+      for (const image of Array.from(document.images || [])) mark(image);
+      for (const canvas of Array.from(document.querySelectorAll('canvas'))) mark(canvas);
     },
-    restore: () => broken.forEach((image) => image.removeAttribute('data-annot-broken')),
+    restore: () => {
+      for (const entry of changed) {
+        if (entry.src === null) entry.image.removeAttribute('src');
+        else entry.image.setAttribute('src', entry.src);
+        if (entry.srcset === null) entry.image.removeAttribute('srcset');
+        else entry.image.setAttribute('srcset', entry.srcset);
+      }
+      for (const node of broken) node.removeAttribute('data-annot-broken');
+    },
   };
 }
 
@@ -167,7 +197,7 @@ async function hostSnapshot(viewport) {
   const box = clipRect(rect, viewport.width, viewport.height, 1);
   if (!box) throw new CaptureError('invalid');
   const snapshot = boundedSnapshot(box);
-  const broken = await markBrokenImages(viewport);
+  const media = await prepareMedia(viewport);
   const marker = 'data-annot-scroll-' + Math.random().toString(36).slice(2);
   const scrollers = [];
   const positioned = [];
@@ -191,7 +221,7 @@ async function hostSnapshot(viewport) {
     if (error && error.name === 'SecurityError') throw new CaptureError('protected');
     // One stubborn image should not lose the whole screenshot: drop every
     // image from the clone and try once more.
-    broken.markAll();
+    media.markAll();
     try {
       data = await toSvg(document.documentElement, { width: viewport.width, height: viewport.height,
         skipFonts: true, cacheBust: false, filter: snapshot.filter });
@@ -200,7 +230,7 @@ async function hostSnapshot(viewport) {
     }
   } finally {
     snapshot.restore();
-    broken.restore();
+    media.restore();
     scrollers.forEach(({ node }) => node.removeAttribute(marker));
     positioned.forEach(({ node }) => node.removeAttribute(marker + '-position'));
   }
@@ -239,7 +269,7 @@ async function hostSnapshot(viewport) {
   }
   return {
     dataUrl: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg)),
-    skipped: broken.count,
+    skipped: media.getCount(),
   };
 }
 

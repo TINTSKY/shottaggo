@@ -30,6 +30,7 @@ function serve() {
     ['/client.js', path.join(ROOT, 'client.js')],
     ['/react.js', path.join(TOOLS, 'react', 'umd', 'react.development.js')],
     ['/react-dom.js', path.join(TOOLS, 'react-dom', 'umd', 'react-dom.development.js')],
+    ['/probe.png', path.join(ROOT, 'test', 'harness', 'probe.png')],
   ]);
   const server = http.createServer((request, response) => {
     const pathname = new URL(request.url, 'http://127.0.0.1').pathname;

@@ -226,6 +226,28 @@
     return measured;
   };
 
+  /** Count pixels close to a target colour in one inserted screenshot. */
+  H.countColor = async (index, target, tolerance) => {
+    const draft = drafts[index];
+    if (!draft || !draft.file) return 0;
+    const bitmap = await createImageBitmap(draft.file);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    context.drawImage(bitmap, 0, 0);
+    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const tol = tolerance || 12;
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.abs(data[i] - target[0]) <= tol
+        && Math.abs(data[i + 1] - target[1]) <= tol
+        && Math.abs(data[i + 2] - target[2]) <= tol) count += 1;
+    }
+    bitmap.close();
+    return count;
+  };
+
   /** Data URL of one inserted screenshot, for saving a visual sample. */
   H.shotDataUrl = (index) => new Promise((resolve) => {
     const draft = drafts[index];

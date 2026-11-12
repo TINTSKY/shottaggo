@@ -33,7 +33,18 @@
       <div class="row"><button id="delete">删除账号</button></div>
     </div>
     <img id="broken" src="http://127.0.0.1:1/missing.png" width="160" height="48" alt="unreachable image">
+    <div class="row" id="media-probes">
+      <img id="probe-image" src="/probe.png" width="40" height="20" alt="probe image">
+      <canvas id="probe-canvas" width="40" height="20"></canvas>
+    </div>
   </div>
+  <script>
+    (function () {
+      const probe = document.getElementById('probe-canvas').getContext('2d');
+      probe.fillStyle = '#00ffff';
+      probe.fillRect(0, 0, 40, 20);
+    })();
+  </script>
   <webview id="guest" src="about:blank"></webview>
   <div id="composer">
     <div id="composer-left"></div>

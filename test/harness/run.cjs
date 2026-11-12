@@ -35,6 +35,7 @@ function serve() {
     ['/client.js', path.join(ROOT, 'client.js')],
     ['/react.js', path.join(TOOLS, 'react', 'umd', 'react.development.js')],
     ['/react-dom.js', path.join(TOOLS, 'react-dom', 'umd', 'react-dom.development.js')],
+    ['/probe.png', path.join(__dirname, 'probe.png')],
   ]);
   const server = http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
@@ -213,6 +214,10 @@ function fail(message, details) {
     if (!/这个按钮点下去没反应/.test(hostState.draftText)) fail('comment missing from caption', hostState.draftText);
     if (!hostImages[0] || hostImages[0].type !== 'image/png' || hostImages[0].width < 100) fail('host screenshot is not a PNG', hostImages);
     if (!hostImages[0] || hostImages[0].red < 50) fail('host screenshot has no red box pixels', hostImages);
+    const magenta = await cdp.evaluate('__HARNESS.countColor(0, [255, 0, 255], 10)');
+    const cyan = await cdp.evaluate('__HARNESS.countColor(0, [0, 255, 255], 10)');
+    if (magenta < 100) fail('host screenshot lost <img> pixels', magenta);
+    if (cyan < 100) fail('host screenshot lost <canvas> pixels', cyan);
 
     // --- browser-panel flow: mock guest picks a region --------------------
     await cdp.evaluate('__HARNESS.clickIn(\'[data-annot-ui="trigger"]\')');

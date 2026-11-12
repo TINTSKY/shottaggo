@@ -547,6 +547,10 @@ function Overlay({ ctx, store, t }) {
         setHover(null);
         return;
       }
+      if (String(el.tagName).toLowerCase() === 'iframe') {
+        setHover(null);
+        return;
+      }
       const rect = el.getBoundingClientRect();
       if (rect.width < 2 || rect.height < 2) {
         setHover(null);
@@ -560,6 +564,10 @@ function Overlay({ ctx, store, t }) {
       if (!el) return;
       if (String(el.tagName).toLowerCase() === 'webview') {
         setError(t('error.guestHint'));
+        return;
+      }
+      if (String(el.tagName).toLowerCase() === 'iframe') {
+        setError(t('error.iframeHint'));
         return;
       }
       const rect = el.getBoundingClientRect();
@@ -610,6 +618,14 @@ function Overlay({ ctx, store, t }) {
         });
         if (overlapsGuest) {
           setError(t('error.guestHint'));
+          return;
+        }
+        const overlapsFrame = Array.from(document.querySelectorAll('iframe')).some((frame) => {
+          const b = frame.getBoundingClientRect();
+          return rect.x < b.right && rect.x + rect.width > b.left && rect.y < b.bottom && rect.y + rect.height > b.top;
+        });
+        if (overlapsFrame) {
+          setError(t('error.iframeHint'));
           return;
         }
         const item = addItem('harness', null, hostState(), rect, { label: t('region.label'), surface: 'harness' }, null);
@@ -1134,6 +1150,7 @@ const DICT_EN = {
   'error.captureGuestFailed': 'The Browser tab could not capture its viewport.',
   'error.tooManyShots': 'This insert would create {count} screenshots, over the {limit}-image limit for one message. Annotate fewer scroll positions, or insert in several batches.',
   'error.guestHint': 'Pick inside the page content, not the tab frame',
+  'error.iframeHint': 'This HTML preview runs in a sandboxed iframe and cannot be captured. Switch the preview to plain text/code, then annotate.',
   'meta.title': 'Annotate viewport',
   'meta.description': 'Take one full screenshot per viewport, mark places with numbered red boxes, and insert them into the composer with your comments.',
 };
@@ -1185,6 +1202,7 @@ const DICT_ZH = {
   'error.captureGuestFailed': '浏览器标签截取视口失败。',
   'error.tooManyShots': '这次会生成 {count} 张截图，超过单条消息的图片上限（{limit} 张）。请减少滚动标注，或分几次插入。',
   'error.guestHint': '请在页面内容里选择，不要选标签边框',
+  'error.iframeHint': '这是沙箱 HTML 预览，无法直接截图；请把预览切换到「纯文本 / 代码」后再标注。',
   'meta.title': '整屏标注',
   'meta.description': '每个视口截一张整屏图，用编号红框标出位置，连同评论一起插入输入框。',
 };

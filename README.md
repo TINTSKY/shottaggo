@@ -23,6 +23,18 @@
 
 ![红框与评论卡片](docs/detail.png)
 
+## 支持的表面
+
+| 表面 | 截图方式 | 说明 |
+| --- | --- | --- |
+| Browser 面板里的网页 | guest 注入 + `capturePage()` | 完整视口，真实像素 |
+| Document Preview：Markdown / 代码 / 纯文本 | 整窗 DOM 快照 | 文字、布局、红框 |
+| Document Preview：图片 / PDF / Office 转 PDF / 表格 | 整窗 DOM 快照 | 图片与 canvas 先转成内嵌图再合成；缩放/平移后标注也有效 |
+| Harness 自身界面（会话、工具卡片、插件页） | 整窗 DOM 快照 | — |
+| Document Preview：HTML 预览 | 不支持 | 沙箱 iframe，父页面读不到内容；切成「纯文本 / 代码」预览后再标注 |
+
+宿主快照会先尝试把每个已加载的图片画进 canvas 再嵌入，所以 blob、鉴权路由、自定义 scheme 的图片也能进截图；跨域无 CORS 或已失效的图片会被跳过，并在 caption 里注明数量。
+
 ## 用起来
 
 1. 在 Harness 里打开要标注的页面（Browser 面板），或直接对着 Harness 界面。
@@ -46,6 +58,7 @@ dsh plugin --profile desktop add "link:C:\path\to\annotate-viewport"
 
 - 截的是**当前视口**，不是整篇文档；超长页面请按屏标注。
 - Web profile 的 Browser 是跨域 iframe，读不到 DOM 也拿不到像素；整屏标注只在 Desktop 的 `<webview>` 上可用。
+- Document Preview 的 HTML 预览是沙箱 iframe，同样无法截图；需要标注时切成纯文本/代码预览。
 - 页面在截图期间滚动、缩放或跳转时，这一张会作废并提示重选，避免把框画到错误内容上。
 - 标注截图会作为附件发给模型，注意不要框选密码、令牌等敏感内容。
 

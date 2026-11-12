@@ -2352,36 +2352,66 @@ var require_capture = __commonJS({
         }
       };
     }
-    async function markBrokenImages(viewport) {
+    async function prepareMedia(viewport) {
+      const changed = [];
       const broken = [];
-      const images = Array.from(document.images || []);
-      await Promise.all(images.map(async (image) => {
-        const rect = image.getBoundingClientRect();
-        if (rect.width < 1 || rect.height < 1) return;
-        if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= viewport.width || rect.top >= viewport.height) return;
-        const src = image.currentSrc || image.src;
-        if (!src || /^data:/i.test(src)) return;
-        const scheme = (src.split(":")[0] || "").toLowerCase();
-        const loaded = image.naturalWidth > 0;
-        if (loaded && (scheme === "http" || scheme === "https" || scheme === "blob")) return;
-        try {
-          const response = await fetch(src, { cache: "force-cache" });
-          if (!response.ok) throw new Error(String(response.status));
-        } catch (_error) {
-          image.setAttribute("data-annot-broken", "1");
-          broken.push(image);
+      const mark = (node) => {
+        node.setAttribute("data-annot-broken", "1");
+        broken.push(node);
+      };
+      const visible = (node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.width >= 1 && rect.height >= 1 && rect.right > 0 && rect.bottom > 0 && rect.left < viewport.width && rect.top < viewport.height;
+      };
+      for (const image of Array.from(document.images || [])) {
+        if (!visible(image)) continue;
+        if (!image.naturalWidth || !image.naturalHeight) {
+          mark(image);
+          continue;
         }
-      }));
+        const src = image.currentSrc || image.src;
+        if (!src || /^data:/i.test(src)) continue;
+        if (image.naturalWidth * image.naturalHeight > 16e6) continue;
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("no 2d context");
+          context.drawImage(image, 0, 0);
+          let dataUrl = canvas.toDataURL("image/webp", 0.95);
+          if (!/^data:image\/webp/i.test(dataUrl)) dataUrl = canvas.toDataURL("image/png");
+          changed.push({ image, src: image.getAttribute("src"), srcset: image.getAttribute("srcset") });
+          image.removeAttribute("srcset");
+          image.setAttribute("src", dataUrl);
+        } catch (_error) {
+          mark(image);
+        }
+      }
+      for (const canvas of Array.from(document.querySelectorAll("canvas"))) {
+        if (!visible(canvas)) continue;
+        try {
+          canvas.toDataURL();
+        } catch (_error) {
+          mark(canvas);
+        }
+      }
       return {
-        count: broken.length,
-        /** Last-resort fallback: exclude every image and retry the snapshot. */
+        getCount: () => broken.length,
+        /** Last-resort fallback: exclude every image and canvas and retry. */
         markAll: () => {
-          for (const image of Array.from(document.images || [])) {
-            image.setAttribute("data-annot-broken", "1");
-            broken.push(image);
-          }
+          for (const image of Array.from(document.images || [])) mark(image);
+          for (const canvas of Array.from(document.querySelectorAll("canvas"))) mark(canvas);
         },
-        restore: () => broken.forEach((image) => image.removeAttribute("data-annot-broken"))
+        restore: () => {
+          for (const entry of changed) {
+            if (entry.src === null) entry.image.removeAttribute("src");
+            else entry.image.setAttribute("src", entry.src);
+            if (entry.srcset === null) entry.image.removeAttribute("srcset");
+            else entry.image.setAttribute("srcset", entry.srcset);
+          }
+          for (const node of broken) node.removeAttribute("data-annot-broken");
+        }
       };
     }
     async function hostSnapshot(viewport) {
@@ -2389,7 +2419,7 @@ var require_capture = __commonJS({
       const box = clipRect2(rect, viewport.width, viewport.height, 1);
       if (!box) throw new CaptureError2("invalid");
       const snapshot = boundedSnapshot(box);
-      const broken = await markBrokenImages(viewport);
+      const media = await prepareMedia(viewport);
       const marker = "data-annot-scroll-" + Math.random().toString(36).slice(2);
       const scrollers = [];
       const positioned = [];
@@ -2416,7 +2446,7 @@ var require_capture = __commonJS({
         });
       } catch (error) {
         if (error && error.name === "SecurityError") throw new CaptureError2("protected");
-        broken.markAll();
+        media.markAll();
         try {
           data = await toSvg(document.documentElement, {
             width: viewport.width,
@@ -2430,7 +2460,7 @@ var require_capture = __commonJS({
         }
       } finally {
         snapshot.restore();
-        broken.restore();
+        media.restore();
         scrollers.forEach(({ node }) => node.removeAttribute(marker));
         positioned.forEach(({ node }) => node.removeAttribute(marker + "-position"));
       }
@@ -2503,7 +2533,7 @@ var require_capture = __commonJS({
       }
       return {
         dataUrl: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg)),
-        skipped: broken.count
+        skipped: media.getCount()
       };
     }
     async function captureHostViewport2() {
@@ -3637,6 +3667,10 @@ function Overlay({ ctx, store, t }) {
         setHover(null);
         return;
       }
+      if (String(el.tagName).toLowerCase() === "iframe") {
+        setHover(null);
+        return;
+      }
       const rect = el.getBoundingClientRect();
       if (rect.width < 2 || rect.height < 2) {
         setHover(null);
@@ -3650,6 +3684,10 @@ function Overlay({ ctx, store, t }) {
       if (!el) return;
       if (String(el.tagName).toLowerCase() === "webview") {
         setError(t("error.guestHint"));
+        return;
+      }
+      if (String(el.tagName).toLowerCase() === "iframe") {
+        setError(t("error.iframeHint"));
         return;
       }
       const rect = el.getBoundingClientRect();
@@ -3700,6 +3738,14 @@ function Overlay({ ctx, store, t }) {
         });
         if (overlapsGuest) {
           setError(t("error.guestHint"));
+          return;
+        }
+        const overlapsFrame = Array.from(document.querySelectorAll("iframe")).some((frame) => {
+          const b = frame.getBoundingClientRect();
+          return rect.x < b.right && rect.x + rect.width > b.left && rect.y < b.bottom && rect.y + rect.height > b.top;
+        });
+        if (overlapsFrame) {
+          setError(t("error.iframeHint"));
           return;
         }
         const item = addItem("harness", null, hostState(), rect, { label: t("region.label"), surface: "harness" }, null);
@@ -4168,6 +4214,7 @@ var DICT_EN = {
   "error.captureGuestFailed": "The Browser tab could not capture its viewport.",
   "error.tooManyShots": "This insert would create {count} screenshots, over the {limit}-image limit for one message. Annotate fewer scroll positions, or insert in several batches.",
   "error.guestHint": "Pick inside the page content, not the tab frame",
+  "error.iframeHint": "This HTML preview runs in a sandboxed iframe and cannot be captured. Switch the preview to plain text/code, then annotate.",
   "meta.title": "Annotate viewport",
   "meta.description": "Take one full screenshot per viewport, mark places with numbered red boxes, and insert them into the composer with your comments."
 };
@@ -4218,6 +4265,7 @@ var DICT_ZH = {
   "error.captureGuestFailed": "\u6D4F\u89C8\u5668\u6807\u7B7E\u622A\u53D6\u89C6\u53E3\u5931\u8D25\u3002",
   "error.tooManyShots": "\u8FD9\u6B21\u4F1A\u751F\u6210 {count} \u5F20\u622A\u56FE\uFF0C\u8D85\u8FC7\u5355\u6761\u6D88\u606F\u7684\u56FE\u7247\u4E0A\u9650\uFF08{limit} \u5F20\uFF09\u3002\u8BF7\u51CF\u5C11\u6EDA\u52A8\u6807\u6CE8\uFF0C\u6216\u5206\u51E0\u6B21\u63D2\u5165\u3002",
   "error.guestHint": "\u8BF7\u5728\u9875\u9762\u5185\u5BB9\u91CC\u9009\u62E9\uFF0C\u4E0D\u8981\u9009\u6807\u7B7E\u8FB9\u6846",
+  "error.iframeHint": "\u8FD9\u662F\u6C99\u7BB1 HTML \u9884\u89C8\uFF0C\u65E0\u6CD5\u76F4\u63A5\u622A\u56FE\uFF1B\u8BF7\u628A\u9884\u89C8\u5207\u6362\u5230\u300C\u7EAF\u6587\u672C / \u4EE3\u7801\u300D\u540E\u518D\u6807\u6CE8\u3002",
   "meta.title": "\u6574\u5C4F\u6807\u6CE8",
   "meta.description": "\u6BCF\u4E2A\u89C6\u53E3\u622A\u4E00\u5F20\u6574\u5C4F\u56FE\uFF0C\u7528\u7F16\u53F7\u7EA2\u6846\u6807\u51FA\u4F4D\u7F6E\uFF0C\u8FDE\u540C\u8BC4\u8BBA\u4E00\u8D77\u63D2\u5165\u8F93\u5165\u6846\u3002"
 };
