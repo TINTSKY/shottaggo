@@ -3128,6 +3128,7 @@ var CSS2 = `
 .dsh-annot-bar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.4 system-ui,-apple-system,sans-serif;pointer-events:auto;max-width:min(820px,94vw)}
 .dsh-annot-bar__hint{color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
 .dsh-annot-bar__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${ACTION};color:#fff;font-weight:600}
+.dsh-annot-bar__warn{color:#b45309;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
 .dsh-annot-chip{appearance:none;min-width:22px;height:22px;padding:0 6px;border:1px solid ${BOX};background:color-mix(in srgb,${BOX} 12%,transparent);color:${BOX};border-radius:11px;font:600 11px/1 system-ui,sans-serif;cursor:pointer}
 .dsh-annot-chip:hover{background:color-mix(in srgb,${BOX} 22%,transparent)}
 .dsh-annot-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:7px;padding:4px 10px;font:12px/1.3 inherit;cursor:pointer;white-space:nowrap}
@@ -3738,6 +3739,10 @@ function Overlay({ ctx, store, t }) {
         groups.push({ base, items: groupItems, dataUrl, url: base.url });
       }
       if (!groups.length) throw new Error(t("error.captureFailed"));
+      const imageLimit = imageLimitOf(session);
+      if (groups.length > imageLimit) {
+        throw new Error(t("error.tooManyShots", { count: groups.length, limit: imageLimit }));
+      }
       const files = groups.map((group, index) => {
         const decoded = dataUrlToBytes(group.dataUrl);
         return new File([decoded.bytes], "annotation-" + (index + 1) + ".png", { type: decoded.mediaType });
@@ -3815,6 +3820,7 @@ function Overlay({ ctx, store, t }) {
       ),
       React.createElement("span", { className: "dsh-annot-bar__count" }, String(items.length)),
       items.length > 0 && readyBases > 0 ? React.createElement("span", { className: "dsh-annot-bar__hint" }, t("bar.shots", { count: readyBases })) : null,
+      items.length > 30 ? React.createElement("span", { className: "dsh-annot-bar__warn" }, t("bar.manyItems", { count: items.length })) : null,
       ...items.filter((item) => !itemVisible(item)).map(
         (item) => React.createElement(
           "button",
@@ -3976,6 +3982,16 @@ function safeGuestUrl(wv) {
     return "";
   }
 }
+function imageLimitOf(session) {
+  try {
+    const face = session && session.projections && session.projections.faceOf ? session.projections.faceOf("imageLimits") : void 0;
+    const snapshot = face && face.getSnapshot ? face.getSnapshot() : void 0;
+    const limit = snapshot && (snapshot.maxImagesPerMessage || snapshot.limits && snapshot.limits.maxImagesPerMessage);
+    if (Number.isFinite(limit) && limit > 0) return limit;
+  } catch (_error) {
+  }
+  return 20;
+}
 function sessionIdFromDom() {
   try {
     const frames = Array.from(document.querySelectorAll("webview[data-sidebar-browser-frame]"));
@@ -4057,6 +4073,7 @@ var DICT_EN = {
   "bar.hintDraft": "Describe this annotation",
   "bar.capturing": "Taking a full screenshot\u2026",
   "bar.shots": "screenshots: {count}",
+  "bar.manyItems": "{count} annotations \u2014 numbering may get hard to follow; keep it to \u226430 per screenshot",
   "bar.insert": "Insert {count} into input",
   "bar.inserting": "Inserting\u2026",
   "bar.insertTarget": "Insert into: {title}",
@@ -4091,6 +4108,7 @@ var DICT_EN = {
   "error.captureChanged": "The page scrolled, resized or navigated during capture. Take the annotation again.",
   "error.captureGuestUnavailable": "This Browser tab does not expose screenshot capture.",
   "error.captureGuestFailed": "The Browser tab could not capture its viewport.",
+  "error.tooManyShots": "This insert would create {count} screenshots, over the {limit}-image limit for one message. Annotate fewer scroll positions, or insert in several batches.",
   "error.guestHint": "Pick inside the page content, not the tab frame",
   "meta.title": "Annotate viewport",
   "meta.description": "Take one full screenshot per viewport, mark places with numbered red boxes, and insert them into the composer with your comments."
@@ -4104,6 +4122,7 @@ var DICT_ZH = {
   "bar.hintDraft": "\u8BF4\u660E\u8FD9\u6761\u6807\u6CE8\u8981\u6539\u4EC0\u4E48",
   "bar.capturing": "\u6B63\u5728\u622A\u53D6\u6574\u5C4F\u2026",
   "bar.shots": "\u622A\u56FE\uFF1A{count} \u5F20",
+  "bar.manyItems": "\u6807\u6CE8\u8F83\u591A\uFF08{count} \u6761\uFF09\uFF0C\u7F16\u53F7\u53EF\u80FD\u96BE\u4EE5\u5BF9\u5E94\uFF0C\u5EFA\u8BAE\u6BCF\u5F20\u56FE \u226430 \u6761",
   "bar.insert": "\u63D2\u5165\u8F93\u5165\u6846\uFF08{count}\uFF09",
   "bar.inserting": "\u6B63\u5728\u63D2\u5165\u2026",
   "bar.insertTarget": "\u63D2\u5165\u5230\uFF1A{title}",
@@ -4138,6 +4157,7 @@ var DICT_ZH = {
   "error.captureChanged": "\u622A\u56FE\u671F\u95F4\u9875\u9762\u6EDA\u52A8\u3001\u7F29\u653E\u6216\u8DF3\u8F6C\u4E86\uFF0C\u8BF7\u91CD\u65B0\u6807\u6CE8\u3002",
   "error.captureGuestUnavailable": "\u8FD9\u4E2A\u6D4F\u89C8\u5668\u6807\u7B7E\u6CA1\u6709\u66B4\u9732\u622A\u56FE\u80FD\u529B\u3002",
   "error.captureGuestFailed": "\u6D4F\u89C8\u5668\u6807\u7B7E\u622A\u53D6\u89C6\u53E3\u5931\u8D25\u3002",
+  "error.tooManyShots": "\u8FD9\u6B21\u4F1A\u751F\u6210 {count} \u5F20\u622A\u56FE\uFF0C\u8D85\u8FC7\u5355\u6761\u6D88\u606F\u7684\u56FE\u7247\u4E0A\u9650\uFF08{limit} \u5F20\uFF09\u3002\u8BF7\u51CF\u5C11\u6EDA\u52A8\u6807\u6CE8\uFF0C\u6216\u5206\u51E0\u6B21\u63D2\u5165\u3002",
   "error.guestHint": "\u8BF7\u5728\u9875\u9762\u5185\u5BB9\u91CC\u9009\u62E9\uFF0C\u4E0D\u8981\u9009\u6807\u7B7E\u8FB9\u6846",
   "meta.title": "\u6574\u5C4F\u6807\u6CE8",
   "meta.description": "\u6BCF\u4E2A\u89C6\u53E3\u622A\u4E00\u5F20\u6574\u5C4F\u56FE\uFF0C\u7528\u7F16\u53F7\u7EA2\u6846\u6807\u51FA\u4F4D\u7F6E\uFF0C\u8FDE\u540C\u8BC4\u8BBA\u4E00\u8D77\u63D2\u5165\u8F93\u5165\u6846\u3002"

@@ -28,6 +28,7 @@ const CSS = `
 .dsh-annot-bar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.4 system-ui,-apple-system,sans-serif;pointer-events:auto;max-width:min(820px,94vw)}
 .dsh-annot-bar__hint{color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
 .dsh-annot-bar__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:${ACTION};color:#fff;font-weight:600}
+.dsh-annot-bar__warn{color:#b45309;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
 .dsh-annot-chip{appearance:none;min-width:22px;height:22px;padding:0 6px;border:1px solid ${BOX};background:color-mix(in srgb,${BOX} 12%,transparent);color:${BOX};border-radius:11px;font:600 11px/1 system-ui,sans-serif;cursor:pointer}
 .dsh-annot-chip:hover{background:color-mix(in srgb,${BOX} 22%,transparent)}
 .dsh-annot-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:7px;padding:4px 10px;font:12px/1.3 inherit;cursor:pointer;white-space:nowrap}
@@ -709,6 +710,10 @@ function Overlay({ ctx, store, t }) {
         groups.push({ base: base, items: groupItems, dataUrl: dataUrl, url: base.url });
       }
       if (!groups.length) throw new Error(t('error.captureFailed'));
+      const imageLimit = imageLimitOf(session);
+      if (groups.length > imageLimit) {
+        throw new Error(t('error.tooManyShots', { count: groups.length, limit: imageLimit }));
+      }
 
       const files = groups.map((group, index) => {
         const decoded = dataUrlToBytes(group.dataUrl);
@@ -793,6 +798,9 @@ function Overlay({ ctx, store, t }) {
       React.createElement('span', { className: 'dsh-annot-bar__count' }, String(items.length)),
       items.length > 0 && readyBases > 0
         ? React.createElement('span', { className: 'dsh-annot-bar__hint' }, t('bar.shots', { count: readyBases }))
+        : null,
+      items.length > 30
+        ? React.createElement('span', { className: 'dsh-annot-bar__warn' }, t('bar.manyItems', { count: items.length }))
         : null,
       ...items
         .filter((item) => !itemVisible(item))
@@ -972,6 +980,22 @@ function safeGuestUrl(wv) {
   }
 }
 
+/** DSH per-message image limit, from the Session projection when available. */
+function imageLimitOf(session) {
+  try {
+    const face = session && session.projections && session.projections.faceOf
+      ? session.projections.faceOf('imageLimits')
+      : undefined;
+    const snapshot = face && face.getSnapshot ? face.getSnapshot() : undefined;
+    const limit = snapshot && (snapshot.maxImagesPerMessage
+      || (snapshot.limits && snapshot.limits.maxImagesPerMessage));
+    if (Number.isFinite(limit) && limit > 0) return limit;
+  } catch (_error) {
+    /* projection unavailable */
+  }
+  return 20;
+}
+
 /** Session that owns the visible Browser pane, including a fullscreen one. */
 function sessionIdFromDom() {
   try {
@@ -1069,6 +1093,7 @@ const DICT_EN = {
   'bar.hintDraft': 'Describe this annotation',
   'bar.capturing': 'Taking a full screenshot…',
   'bar.shots': 'screenshots: {count}',
+  'bar.manyItems': '{count} annotations — numbering may get hard to follow; keep it to ≤30 per screenshot',
   'bar.insert': 'Insert {count} into input',
   'bar.inserting': 'Inserting…',
   'bar.insertTarget': 'Insert into: {title}',
@@ -1103,6 +1128,7 @@ const DICT_EN = {
   'error.captureChanged': 'The page scrolled, resized or navigated during capture. Take the annotation again.',
   'error.captureGuestUnavailable': 'This Browser tab does not expose screenshot capture.',
   'error.captureGuestFailed': 'The Browser tab could not capture its viewport.',
+  'error.tooManyShots': 'This insert would create {count} screenshots, over the {limit}-image limit for one message. Annotate fewer scroll positions, or insert in several batches.',
   'error.guestHint': 'Pick inside the page content, not the tab frame',
   'meta.title': 'Annotate viewport',
   'meta.description': 'Take one full screenshot per viewport, mark places with numbered red boxes, and insert them into the composer with your comments.',
@@ -1117,6 +1143,7 @@ const DICT_ZH = {
   'bar.hintDraft': '说明这条标注要改什么',
   'bar.capturing': '正在截取整屏…',
   'bar.shots': '截图：{count} 张',
+  'bar.manyItems': '标注较多（{count} 条），编号可能难以对应，建议每张图 ≤30 条',
   'bar.insert': '插入输入框（{count}）',
   'bar.inserting': '正在插入…',
   'bar.insertTarget': '插入到：{title}',
@@ -1151,6 +1178,7 @@ const DICT_ZH = {
   'error.captureChanged': '截图期间页面滚动、缩放或跳转了，请重新标注。',
   'error.captureGuestUnavailable': '这个浏览器标签没有暴露截图能力。',
   'error.captureGuestFailed': '浏览器标签截取视口失败。',
+  'error.tooManyShots': '这次会生成 {count} 张截图，超过单条消息的图片上限（{limit} 张）。请减少滚动标注，或分几次插入。',
   'error.guestHint': '请在页面内容里选择，不要选标签边框',
   'meta.title': '整屏标注',
   'meta.description': '每个视口截一张整屏图，用编号红框标出位置，连同评论一起插入输入框。',

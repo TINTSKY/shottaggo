@@ -37,6 +37,7 @@
     "build": "node build.mjs",
     "test": "node --test test/capture.test.cjs test/lib.test.cjs test/package.test.cjs test/region.test.cjs",
     "test:harness": "node test/harness/run.cjs",
+    "test:bench": "node test/bench/run.cjs",
     "check": "npm run build && npm test && node --check client.js"
   },
   "devDependencies": {

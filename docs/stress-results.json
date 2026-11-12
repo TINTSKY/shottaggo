@@ -1,0 +1,275 @@
+[
+  {
+    "case": "single-5",
+    "annotations": 5,
+    "bases": 1,
+    "add": {
+      "count": 5,
+      "added": 5,
+      "total": 406,
+      "avg": 81.1,
+      "p95": 83,
+      "max": 83
+    },
+    "insertMs": 26,
+    "captionChars": 532,
+    "images": 1,
+    "imageBytes": 59471,
+    "imageKB": 58,
+    "heapMB": 4.3,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "errors": []
+  },
+  {
+    "case": "single-10",
+    "annotations": 10,
+    "bases": 1,
+    "add": {
+      "count": 10,
+      "added": 10,
+      "total": 815,
+      "avg": 81.5,
+      "p95": 85,
+      "max": 85
+    },
+    "insertMs": 42,
+    "captionChars": 976,
+    "images": 1,
+    "imageBytes": 67211,
+    "imageKB": 66,
+    "heapMB": 5.2,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "errors": []
+  },
+  {
+    "case": "single-20",
+    "annotations": 20,
+    "bases": 1,
+    "add": {
+      "count": 20,
+      "added": 20,
+      "total": 1678,
+      "avg": 83.9,
+      "p95": 96,
+      "max": 96
+    },
+    "insertMs": 27,
+    "captionChars": 1899,
+    "images": 1,
+    "imageBytes": 80528,
+    "imageKB": 79,
+    "heapMB": 4.3,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "errors": []
+  },
+  {
+    "case": "single-30",
+    "annotations": 30,
+    "bases": 1,
+    "add": {
+      "count": 30,
+      "added": 30,
+      "total": 2492,
+      "avg": 83.1,
+      "p95": 84,
+      "max": 84
+    },
+    "insertMs": 71,
+    "captionChars": 2817,
+    "images": 1,
+    "imageBytes": 94051,
+    "imageKB": 92,
+    "heapMB": 4.5,
+    "longTasks": 1,
+    "longestTaskMs": 54,
+    "errors": []
+  },
+  {
+    "case": "single-50",
+    "annotations": 50,
+    "bases": 1,
+    "add": {
+      "count": 50,
+      "added": 50,
+      "total": 4144,
+      "avg": 82.9,
+      "p95": 84,
+      "max": 85
+    },
+    "insertMs": 46,
+    "captionChars": 4668,
+    "images": 1,
+    "imageBytes": 127271,
+    "imageKB": 124,
+    "heapMB": 4.8,
+    "longTasks": 0,
+    "longestTaskMs": 0,
+    "errors": []
+  },
+  {
+    "case": "single-100",
+    "annotations": 100,
+    "bases": 1,
+    "add": {
+      "count": 100,
+      "added": 100,
+      "total": 8323,
+      "avg": 83.2,
+      "p95": 85,
+      "max": 87
+    },
+    "insertMs": 109,
+    "captionChars": 9327,
+    "images": 1,
+    "imageBytes": 205884,
+    "imageKB": 201,
+    "heapMB": 5.2,
+    "longTasks": 1,
+    "longestTaskMs": 76,
+    "errors": []
+  },
+  {
+    "case": "single-200",
+    "annotations": 200,
+    "bases": 1,
+    "add": {
+      "count": 200,
+      "added": 200,
+      "total": 16661,
+      "avg": 83.3,
+      "p95": 85,
+      "max": 85
+    },
+    "insertMs": 94,
+    "captionChars": 19032,
+    "images": 1,
+    "imageBytes": 352390,
+    "imageKB": 344,
+    "heapMB": 6.2,
+    "longTasks": 1,
+    "longestTaskMs": 63,
+    "errors": []
+  },
+  {
+    "case": "single-500",
+    "annotations": 500,
+    "bases": 1,
+    "add": {
+      "count": 500,
+      "added": 500,
+      "total": 41659,
+      "avg": 83.3,
+      "p95": 85,
+      "max": 85
+    },
+    "insertMs": 150,
+    "captionChars": 48147,
+    "images": 1,
+    "imageBytes": 644139,
+    "imageKB": 629,
+    "heapMB": 5.4,
+    "longTasks": 1,
+    "longestTaskMs": 118,
+    "errors": []
+  },
+  {
+    "case": "single-1000",
+    "annotations": 1000,
+    "bases": 1,
+    "add": {
+      "count": 1000,
+      "added": 1000,
+      "total": 83321,
+      "avg": 83.3,
+      "p95": 85,
+      "max": 97
+    },
+    "insertMs": 135,
+    "captionChars": 96676,
+    "images": 1,
+    "imageBytes": 627707,
+    "imageKB": 613,
+    "heapMB": 5.6,
+    "longTasks": 1,
+    "longestTaskMs": 102,
+    "errors": []
+  },
+  {
+    "case": "scroll-5x5",
+    "annotations": 25,
+    "bases": 5,
+    "add": {
+      "count": 25,
+      "added": 25,
+      "total": 2094,
+      "avg": 83.8,
+      "p95": 115,
+      "max": 124
+    },
+    "insertMs": 123,
+    "captionChars": 2566,
+    "images": 5,
+    "imageBytes": 298546,
+    "imageKB": 292,
+    "heapMB": 5.8,
+    "longTasks": 1,
+    "longestTaskMs": 53,
+    "errors": []
+  },
+  {
+    "case": "scroll-10x5",
+    "annotations": 50,
+    "bases": 10,
+    "add": {
+      "count": 50,
+      "added": 50,
+      "total": 4186,
+      "avg": 83.7,
+      "p95": 101,
+      "max": 109
+    },
+    "insertMs": 272,
+    "captionChars": 5142,
+    "images": 10,
+    "imageBytes": 602217,
+    "imageKB": 588,
+    "heapMB": 5.3,
+    "longTasks": 1,
+    "longestTaskMs": 56,
+    "errors": []
+  },
+  {
+    "case": "scroll-20x5",
+    "annotations": 100,
+    "bases": 20,
+    "add": {
+      "count": 100,
+      "added": 100,
+      "total": 8439,
+      "avg": 84.4,
+      "p95": 101,
+      "max": 121
+    },
+    "insertMs": 488,
+    "captionChars": 10331,
+    "images": 20,
+    "imageBytes": 1210175,
+    "imageKB": 1182,
+    "heapMB": 9,
+    "longTasks": 3,
+    "longestTaskMs": 53,
+    "errors": []
+  },
+  {
+    "case": "guard-21x5",
+    "annotations": 105,
+    "bases": 21,
+    "guard": {
+      "added": 0,
+      "error": "这次会生成 21 张截图，超过单条消息的图片上限（20 张）。请减少滚动标注，或分几次插入。"
+    }
+  }
+]
