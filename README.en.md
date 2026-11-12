@@ -46,13 +46,23 @@ The insert targets **the chat currently open in the main view**, not the session
 
 ## Install
 
-Install the bundled `dsh` command from **Settings → Account → Manage dsh Command…**, then fully quit Desktop:
+Install the bundled `dsh` command from **Settings → Account → Manage dsh Command…**, then fully quit Desktop.
+
+From npm (once published):
+
+```sh
+dsh plugin --profile desktop add dsh-shottaggo
+```
+
+From a local checkout:
 
 ```sh
 dsh plugin --profile desktop add "link:C:\path\to\shottaggo"
 ```
 
 Reopen Desktop and enable `dsh-shottaggo` on the Plugins page. The repo ships the built `client.js`; installing does not require a build.
+
+Development, testing and release steps live in [CONTRIBUTING.md](CONTRIBUTING.md), [RELEASING.md](RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Limits
 

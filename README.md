@@ -48,13 +48,23 @@
 
 ## 安装
 
-先在 **设置 → 账号 → Manage dsh Command…** 装好 Desktop 自带的 `dsh`，然后完全退出 Desktop：
+先在 **设置 → 账号 → Manage dsh Command…** 装好 Desktop 自带的 `dsh`，然后完全退出 Desktop。
+
+从 npm（发布后）：
+
+```sh
+dsh plugin --profile desktop add dsh-shottaggo
+```
+
+从本地源码 / 开发中的 checkout：
 
 ```sh
 dsh plugin --profile desktop add "link:C:\path\to\shottaggo"
 ```
 
 重新打开 Desktop，到「插件」页确认 `dsh-shottaggo` 已启用。本仓库已经提交构建产物 `client.js`，安装时不需要构建。
+
+开发、测试与发布流程见 [CONTRIBUTING.md](CONTRIBUTING.md)、[RELEASING.md](RELEASING.md) 和 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 边界
 

@@ -1,11 +1,23 @@
 {
   "name": "dsh-shottaggo",
   "version": "0.1.0",
-  "private": true,
   "description": "ShotTagGo DSH — full-frame screenshot annotation for DeepSeek Harness. Numbered red boxes and comments inserted into the composer.",
   "type": "module",
   "main": "index.js",
   "icon": "./icon.svg",
+  "author": "ShotTagGo contributors",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "screenshot",
+    "screenshot-annotation",
+    "annotate",
+    "annotation",
+    "viewport",
+    "visual-feedback",
+    "desktop"
+  ],
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -19,7 +31,8 @@
     "locale/*.json",
     "icon.svg",
     "THIRD_PARTY_NOTICES.md",
-    "LICENSE"
+    "LICENSE",
+    "README.en.md"
   ],
   "dsh": {
     "bundle": {
@@ -38,11 +51,15 @@
     "test": "node --test test/capture.test.cjs test/lib.test.cjs test/package.test.cjs test/region.test.cjs",
     "test:harness": "node test/harness/run.cjs",
     "test:bench": "node test/bench/run.cjs",
-    "check": "npm run build && npm test && node --check client.js"
+    "check": "npm run build && npm test && node --check client.js",
+    "prepublishOnly": "npm run check"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
     "html-to-image": "^1.11.13"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }
