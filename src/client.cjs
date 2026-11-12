@@ -13,7 +13,7 @@ const { clipRect, installRegionPicker } = require('./region.cjs');
 const { describeElement, dataUrlToBytes, formatInsertText, clip } = require('./lib.cjs');
 const { MARK, GUEST_INSTALL, GUEST_REMOVE, GUEST_FREEZE, GUEST_RESUME } = require('./guest.cjs');
 
-const NS = 'annotateViewport';
+const NS = 'shottaggo';
 const UI = '[data-annot-ui]';
 const BOX = '#ff3b30';
 const ACTION = '#2f6feb';
@@ -1088,10 +1088,10 @@ function guestInstallScript() {
 function apply(ctx) {
   ctx.effect(() => {
     if (typeof document === 'undefined') return undefined;
-    const marker = 'dsh-annotate-viewport/client.css';
+    const marker = 'dsh-shottaggo/client.css';
     if (document.querySelector('style[data-plugin-css="' + marker + '"]') === null) {
       const style = document.createElement('style');
-      style.dataset.plugin = 'dsh-annotate-viewport';
+      style.dataset.plugin = 'dsh-shottaggo';
       style.dataset.pluginCss = marker;
       style.textContent = CSS;
       document.head.appendChild(style);
@@ -1100,21 +1100,21 @@ function apply(ctx) {
       const style = document.querySelector('style[data-plugin-css="' + marker + '"]');
       if (style) style.remove();
     };
-  }, 'annotate-viewport: styles');
+  }, 'shottaggo: styles');
 
-  ctx.effect(() => ctx.locale.register(NS, { en: DICT_EN, zh: DICT_ZH }), 'annotate-viewport: dictionaries');
+  ctx.effect(() => ctx.locale.register(NS, { en: DICT_EN, zh: DICT_ZH }), 'shottaggo: dictionaries');
   const t = ctx.locale.bind(NS);
   const store = createStore();
 
   ctx.slots.inject('conversation.input.left', () =>
     ctx.slots.register(
-      { name: 'conversation.input.left', id: 'annotate-viewport-trigger', order: 95, locale: NS, label: () => t('trigger.title') },
+      { name: 'conversation.input.left', id: 'shottaggo-trigger', order: 95, locale: NS, label: () => t('trigger.title') },
       (props) => React.createElement(Trigger, { props: props, store: store, t: t }),
     ),
   );
 
   ctx.slots.inject('shell.overlay', () =>
-    ctx.slots.register({ name: 'shell.overlay', id: 'annotate-viewport-overlay', order: 400, locale: NS }, () =>
+    ctx.slots.register({ name: 'shell.overlay', id: 'shottaggo-overlay', order: 400, locale: NS }, () =>
       React.createElement(Overlay, { ctx: ctx, store: store, t: t }),
     ),
   );
@@ -1168,8 +1168,8 @@ const DICT_EN = {
   'error.tooManyShots': 'This insert would create {count} screenshots, over the {limit}-image limit for one message. Annotate fewer scroll positions, or insert in several batches.',
   'error.guestHint': 'Pick inside the page content, not the tab frame',
   'error.iframeHint': 'This HTML preview runs in a sandboxed iframe and cannot be captured. Switch the preview to plain text/code, then annotate.',
-  'meta.title': 'Annotate viewport',
-  'meta.description': 'Take one full screenshot per viewport, mark places with numbered red boxes, and insert them into the composer with your comments.',
+  'meta.title': 'ShotTagGo',
+  'meta.description': 'Full-frame screenshots with numbered red boxes and comments, inserted into the composer as drafts.',
 };
 
 const DICT_ZH = {
@@ -1220,8 +1220,8 @@ const DICT_ZH = {
   'error.tooManyShots': '这次会生成 {count} 张截图，超过单条消息的图片上限（{limit} 张）。请减少滚动标注，或分几次插入。',
   'error.guestHint': '请在页面内容里选择，不要选标签边框',
   'error.iframeHint': '这是沙箱 HTML 预览，无法直接截图；请把预览切换到「纯文本 / 代码」后再标注。',
-  'meta.title': '整屏标注',
-  'meta.description': '每个视口截一张整屏图，用编号红框标出位置，连同评论一起插入输入框。',
+  'meta.title': '截图批注Go',
+  'meta.description': '整屏截图 + 编号红框 + 评论，插入输入框，而不是直接发送。',
 };
 
-module.exports = { name: 'dsh-annotate-viewport', inject: ['slots', 'locale'], apply: apply };
+module.exports = { name: 'dsh-shottaggo', inject: ['slots', 'locale'], apply: apply };

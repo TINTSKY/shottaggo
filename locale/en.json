@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Viewport Annotate",
-    "description": "Full-viewport screenshots with numbered red boxes and comments, inserted into the composer instead of being sent."
+    "title": "ShotTagGo",
+    "description": "Full-frame screenshot annotation for DeepSeek Harness. Numbered red boxes and comments inserted into the composer."
   }
 }

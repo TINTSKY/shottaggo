@@ -1,4 +1,4 @@
-window.__ModuleLoader__.load({ id: "dsh-annotate-viewport", factory: (require) => {
+window.__ModuleLoader__.load({ id: "dsh-shottaggo", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
 "use strict";
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -3198,7 +3198,7 @@ var {
 var { clipRect, installRegionPicker } = require_region();
 var { describeElement, dataUrlToBytes, formatInsertText, clip } = require_lib2();
 var { MARK, GUEST_INSTALL, GUEST_REMOVE, GUEST_FREEZE, GUEST_RESUME } = require_guest();
-var NS = "annotateViewport";
+var NS = "shottaggo";
 var UI = "[data-annot-ui]";
 var BOX = "#ff3b30";
 var ACTION = "#2f6feb";
@@ -4149,10 +4149,10 @@ function guestInstallScript() {
 function apply(ctx) {
   ctx.effect(() => {
     if (typeof document === "undefined") return void 0;
-    const marker = "dsh-annotate-viewport/client.css";
+    const marker = "dsh-shottaggo/client.css";
     if (document.querySelector('style[data-plugin-css="' + marker + '"]') === null) {
       const style = document.createElement("style");
-      style.dataset.plugin = "dsh-annotate-viewport";
+      style.dataset.plugin = "dsh-shottaggo";
       style.dataset.pluginCss = marker;
       style.textContent = CSS2;
       document.head.appendChild(style);
@@ -4161,21 +4161,21 @@ function apply(ctx) {
       const style = document.querySelector('style[data-plugin-css="' + marker + '"]');
       if (style) style.remove();
     };
-  }, "annotate-viewport: styles");
-  ctx.effect(() => ctx.locale.register(NS, { en: DICT_EN, zh: DICT_ZH }), "annotate-viewport: dictionaries");
+  }, "shottaggo: styles");
+  ctx.effect(() => ctx.locale.register(NS, { en: DICT_EN, zh: DICT_ZH }), "shottaggo: dictionaries");
   const t = ctx.locale.bind(NS);
   const store = createStore();
   ctx.slots.inject(
     "conversation.input.left",
     () => ctx.slots.register(
-      { name: "conversation.input.left", id: "annotate-viewport-trigger", order: 95, locale: NS, label: () => t("trigger.title") },
+      { name: "conversation.input.left", id: "shottaggo-trigger", order: 95, locale: NS, label: () => t("trigger.title") },
       (props) => React.createElement(Trigger, { props, store, t })
     )
   );
   ctx.slots.inject(
     "shell.overlay",
     () => ctx.slots.register(
-      { name: "shell.overlay", id: "annotate-viewport-overlay", order: 400, locale: NS },
+      { name: "shell.overlay", id: "shottaggo-overlay", order: 400, locale: NS },
       () => React.createElement(Overlay, { ctx, store, t })
     )
   );
@@ -4228,8 +4228,8 @@ var DICT_EN = {
   "error.tooManyShots": "This insert would create {count} screenshots, over the {limit}-image limit for one message. Annotate fewer scroll positions, or insert in several batches.",
   "error.guestHint": "Pick inside the page content, not the tab frame",
   "error.iframeHint": "This HTML preview runs in a sandboxed iframe and cannot be captured. Switch the preview to plain text/code, then annotate.",
-  "meta.title": "Annotate viewport",
-  "meta.description": "Take one full screenshot per viewport, mark places with numbered red boxes, and insert them into the composer with your comments."
+  "meta.title": "ShotTagGo",
+  "meta.description": "Full-frame screenshots with numbered red boxes and comments, inserted into the composer as drafts."
 };
 var DICT_ZH = {
   "trigger.title": "\u6807\u6CE8",
@@ -4279,10 +4279,10 @@ var DICT_ZH = {
   "error.tooManyShots": "\u8FD9\u6B21\u4F1A\u751F\u6210 {count} \u5F20\u622A\u56FE\uFF0C\u8D85\u8FC7\u5355\u6761\u6D88\u606F\u7684\u56FE\u7247\u4E0A\u9650\uFF08{limit} \u5F20\uFF09\u3002\u8BF7\u51CF\u5C11\u6EDA\u52A8\u6807\u6CE8\uFF0C\u6216\u5206\u51E0\u6B21\u63D2\u5165\u3002",
   "error.guestHint": "\u8BF7\u5728\u9875\u9762\u5185\u5BB9\u91CC\u9009\u62E9\uFF0C\u4E0D\u8981\u9009\u6807\u7B7E\u8FB9\u6846",
   "error.iframeHint": "\u8FD9\u662F\u6C99\u7BB1 HTML \u9884\u89C8\uFF0C\u65E0\u6CD5\u76F4\u63A5\u622A\u56FE\uFF1B\u8BF7\u628A\u9884\u89C8\u5207\u6362\u5230\u300C\u7EAF\u6587\u672C / \u4EE3\u7801\u300D\u540E\u518D\u6807\u6CE8\u3002",
-  "meta.title": "\u6574\u5C4F\u6807\u6CE8",
-  "meta.description": "\u6BCF\u4E2A\u89C6\u53E3\u622A\u4E00\u5F20\u6574\u5C4F\u56FE\uFF0C\u7528\u7F16\u53F7\u7EA2\u6846\u6807\u51FA\u4F4D\u7F6E\uFF0C\u8FDE\u540C\u8BC4\u8BBA\u4E00\u8D77\u63D2\u5165\u8F93\u5165\u6846\u3002"
+  "meta.title": "\u622A\u56FE\u6279\u6CE8Go",
+  "meta.description": "\u6574\u5C4F\u622A\u56FE + \u7F16\u53F7\u7EA2\u6846 + \u8BC4\u8BBA\uFF0C\u63D2\u5165\u8F93\u5165\u6846\uFF0C\u800C\u4E0D\u662F\u76F4\u63A5\u53D1\u9001\u3002"
 };
-module.exports = { name: "dsh-annotate-viewport", inject: ["slots", "locale"], apply };
+module.exports = { name: "dsh-shottaggo", inject: ["slots", "locale"], apply };
 
 return module.exports;
 } });

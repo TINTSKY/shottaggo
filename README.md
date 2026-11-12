@@ -1,6 +1,6 @@
-# 整屏标注
+# ShotTagGo DSH · 截图批注Go
 
-**圈出界面上的问题，整屏截图和编号评论一起进入输入框。**
+**整屏截图，红框批注，评论一起进入输入框。**
 
 `DeepSeek Harness 0.2.2` · `Desktop 优先` · `MIT`
 
@@ -51,15 +51,15 @@
 先在 **设置 → 账号 → Manage dsh Command…** 装好 Desktop 自带的 `dsh`，然后完全退出 Desktop：
 
 ```sh
-dsh plugin --profile desktop add "link:C:\path\to\annotate-viewport"
+dsh plugin --profile desktop add "link:C:\path\to\shottaggo"
 ```
 
-重新打开 Desktop，到「插件」页确认 `dsh-annotate-viewport` 已启用。本仓库已经提交构建产物 `client.js`，安装时不需要构建。
+重新打开 Desktop，到「插件」页确认 `dsh-shottaggo` 已启用。本仓库已经提交构建产物 `client.js`，安装时不需要构建。
 
 ## 边界
 
 - 截的是**当前视口**，不是整篇文档；超长页面请按屏标注。
-- Web profile 的 Browser 是跨域 iframe，读不到 DOM 也拿不到像素；整屏标注只在 Desktop 的 `<webview>` 上可用。
+- Web profile 的 Browser 是跨域 iframe，读不到 DOM 也拿不到像素；整屏批注只在 Desktop 的 `<webview>` 上可用。
 - Document Preview 的 HTML 预览是沙箱 iframe，同样无法截图；需要标注时切成纯文本/代码预览。
 - 页面在截图期间滚动、缩放或跳转时，这一张会作废并提示重选，避免把框画到错误内容上。
 - 标注截图会作为附件发给模型，注意不要框选密码、令牌等敏感内容。
@@ -111,4 +111,4 @@ node docs/serve-demo.cjs     # http://127.0.0.1:8899/
 
 本插件是 [DSH-AnnotateAnything](https://github.com/Meatware-Engineering/DSH-AnnotateAnything)（MIT）的 fork。沿用其窗口快照、guest 注入与指针选择实现；上游按“选中区域裁剪”输出，本 fork 改为整屏底图 + 编号红框 + 插入草稿，并补充了全屏入口、目标会话解析、中文本地化与无障碍回归测试。
 
-MIT License。原始实现 © 2026 Meatware Engineering；修改部分 © 2026 annotate-viewport contributors。
+MIT License。原始实现 © 2026 Meatware Engineering；修改部分 © 2026 ShotTagGo contributors。

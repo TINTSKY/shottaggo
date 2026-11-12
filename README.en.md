@@ -1,6 +1,6 @@
-# Viewport Annotate
+# ShotTagGo DSH
 
-**Box the problem on a full screenshot, then drop the screenshot and numbered comments into the composer.**
+**Full-frame screenshots, numbered red boxes, comments — straight into the composer.**
 
 `DeepSeek Harness 0.2.2` · `Desktop-first` · `MIT`
 
@@ -49,10 +49,10 @@ The insert targets **the chat currently open in the main view**, not the session
 Install the bundled `dsh` command from **Settings → Account → Manage dsh Command…**, then fully quit Desktop:
 
 ```sh
-dsh plugin --profile desktop add "link:C:\path\to\annotate-viewport"
+dsh plugin --profile desktop add "link:C:\path\to\shottaggo"
 ```
 
-Reopen Desktop and enable `dsh-annotate-viewport` on the Plugins page. The repo ships the built `client.js`; installing does not require a build.
+Reopen Desktop and enable `dsh-shottaggo` on the Plugins page. The repo ships the built `client.js`; installing does not require a build.
 
 ## Limits
 
@@ -93,4 +93,4 @@ npm run test:bench
 
 A fork of [DSH-AnnotateAnything](https://github.com/Meatware-Engineering/DSH-AnnotateAnything) (MIT). It keeps the window snapshot, guest injection and pointer picker; this fork switches to full-viewport bases with numbered red boxes, inserts drafts instead of sending, adds the fullscreen entry, target-session resolution, bilingual UI and regression tests.
 
-MIT. Original implementation © 2026 Meatware Engineering; modifications © 2026 annotate-viewport contributors.
+MIT. Original implementation © 2026 Meatware Engineering; modifications © 2026 ShotTagGo contributors.

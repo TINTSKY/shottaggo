@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const ENTRY = 'src/client.cjs';
-const PLUGIN_ID = 'dsh-annotate-viewport';
+const PLUGIN_ID = 'dsh-shottaggo';
 const OUT = 'client.js';
 const TMP = '.client.bundle.cjs';
 
